@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="60" height="15" viewBox="0 0 60 15" xmlns="http://www.w3.org/2000/svg">
+  <!-- 平台主体 -->
+  <path d="M5,0 H55 Q60,0 60,5 V10 Q60,15 55,15 H5 Q0,15 0,10 V5 Q0,0 5,0 Z" fill="#99CCCC"/>
+  
+  <!-- 平台高光 -->
+  <path d="M5,0 H55 Q60,0 60,3 V3 Q58,5 5,5 Q0,5 0,3 V3 Q0,0 5,0 Z" fill="rgba(255,255,255,0.4)"/>
+  
+  <!-- 左箭头指示 -->
+  <path d="M10,5 L5,5 L10,2" stroke="rgba(0,0,0,0.2)" stroke-width="1" fill="none"/>
+  
+  <!-- 右箭头指示 -->
+  <path d="M50,5 L55,5 L50,2" stroke="rgba(0,0,0,0.2)" stroke-width="1" fill="none"/>
+</svg> 

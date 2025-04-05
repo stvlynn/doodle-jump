@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="15" height="20" viewBox="0 0 15 20" xmlns="http://www.w3.org/2000/svg">
+  <!-- 弹簧底座 -->
+  <rect x="0" y="15" width="15" height="5" fill="#FF5252"/>
+  
+  <!-- 弹簧锯齿部分 -->
+  <path d="M0,15 L5,12 L10,15 L15,12
+           L15,12 L10,9 L5,12 L0,9
+           L0,9 L5,6 L10,9 L15,6
+           L15,6 L10,3 L5,6 L0,3" fill="#FF5252"/>
+  
+  <!-- 弹簧顶部 -->
+  <rect x="-2" y="0" width="19" height="5" fill="#FF5252"/>
+</svg> 

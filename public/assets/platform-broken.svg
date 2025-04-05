@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="60" height="15" viewBox="0 0 60 15" xmlns="http://www.w3.org/2000/svg">
+  <!-- 第一碎片 -->
+  <g transform="translate(3, 0) rotate(-5)">
+    <rect x="0" y="0" width="10" height="8" rx="2" fill="#FFFFCC" />
+    <path d="M2.5,0 L2.5,4" stroke="rgba(0,0,0,0.2)" stroke-width="0.5" fill="none"/>
+  </g>
+  
+  <!-- 第二碎片 -->
+  <g transform="translate(18, 3) rotate(8)">
+    <rect x="0" y="0" width="10" height="8" rx="2" fill="#FFFFCC" />
+    <path d="M2.5,0 L2.5,4" stroke="rgba(0,0,0,0.2)" stroke-width="0.5" fill="none"/>
+  </g>
+  
+  <!-- 第三碎片 -->
+  <g transform="translate(33, 1) rotate(-3)">
+    <rect x="0" y="0" width="10" height="8" rx="2" fill="#FFFFCC" />
+    <path d="M2.5,0 L2.5,4" stroke="rgba(0,0,0,0.2)" stroke-width="0.5" fill="none"/>
+  </g>
+  
+  <!-- 第四碎片 -->
+  <g transform="translate(48, 2) rotate(6)">
+    <rect x="0" y="0" width="10" height="8" rx="2" fill="#FFFFCC" />
+    <path d="M2.5,0 L2.5,4" stroke="rgba(0,0,0,0.2)" stroke-width="0.5" fill="none"/>
+  </g>
+  
+  <!-- 小碎块 -->
+  <circle cx="12" cy="12" r="1.5" fill="#FFFFCC"/>
+  <circle cx="28" cy="13" r="2" fill="#FFFFCC"/>
+  <circle cx="45" cy="11" r="1" fill="#FFFFCC"/>
+</svg> 

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="40" height="70" viewBox="0 0 40 70" xmlns="http://www.w3.org/2000/svg">
+  <!-- 身体 -->
+  <path d="M10,0 H30 Q40,0 40,10 V30 Q40,40 30,40 H10 Q0,40 0,30 V10 Q0,0 10,0 Z" fill="#FF6B6B"/>
+  
+  <!-- 左触角 -->
+  <path d="M10,5 Q0,-5 -5,-15" stroke="rgba(0,0,0,0.6)" stroke-width="2" fill="none"/>
+  <circle cx="-5" cy="-15" r="3" fill="#99CCCC"/>
+  
+  <!-- 右触角 -->
+  <path d="M30,5 Q40,-5 45,-15" stroke="rgba(0,0,0,0.6)" stroke-width="2" fill="none"/>
+  <circle cx="45" cy="-15" r="3" fill="#99CCCC"/>
+  
+  <!-- 左眼 -->
+  <circle cx="12" cy="15" r="6" fill="#FFFFFF"/>
+  <circle cx="12" cy="15" r="2.5" fill="#343a40"/>
+  
+  <!-- 右眼 -->
+  <circle cx="28" cy="15" r="6" fill="#FFFFFF"/>
+  <circle cx="28" cy="15" r="2.5" fill="#343a40"/>
+  
+  <!-- 开心嘴巴 -->
+  <path d="M20,25 Q20,33 28,29 M20,25 Q20,33 12,29" stroke="rgba(0,0,0,0.6)" stroke-width="2" fill="none"/>
+  
+  <!-- 火箭 -->
+  <!-- 火箭主体 -->
+  <path d="M10,40 L8,60 L32,60 L30,40 Z" fill="#99CCCC"/>
+  
+  <!-- 火箭尾翼 - 左 -->
+  <path d="M8,55 L2,60 L8,50 Z" fill="#FF6B6B"/>
+  
+  <!-- 火箭尾翼 - 右 -->
+  <path d="M32,55 L38,60 L32,50 Z" fill="#FF6B6B"/>
+  
+  <!-- 火焰 - 外层 -->
+  <path d="M13,60 L20,70 L27,60 Z" fill="#FFC107"/>
+  
+  <!-- 火焰 - 内层 -->
+  <path d="M16,60 L20,67 L24,60 Z" fill="#FF9800"/>
+</svg> 

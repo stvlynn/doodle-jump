@@ -1,6 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { DifficultyManager } from './DifficultyManager'
 
 // Game state types
 export interface Platform {
@@ -19,7 +20,7 @@ export interface PowerUp {
   y: number
   width: number
   height: number
-  type: 'spring' | 'rocket'
+  type: 'rocket'
   active: boolean
 }
 
@@ -31,7 +32,7 @@ export interface GameState {
     width: number
     height: number
     isJumping: boolean
-    activePowerup: null | 'spring' | 'rocket'
+    activePowerup: null | 'rocket'
     powerupTimer: number
   }
   platforms: Platform[]
@@ -39,7 +40,8 @@ export interface GameState {
   score: number
   gameOver: boolean
   gameStarted: boolean
-  difficulty: number // 1-10, increases as score increases
+  difficulty: number // Game difficulty value
+  lastRocketTime: number // Last rocket generation time
 }
 
 interface GameContextType {
@@ -50,6 +52,10 @@ interface GameContextType {
   movePlayerRight: () => void
   stopMoving: () => void
   movingDirection: 'left' | 'right' | null
+  pauseGame: () => void
+  resumeGame: () => void
+  toggleGravityControl: (enabled: boolean) => void
+  useGravityControl: boolean
 }
 
 const GameContext = createContext<GameContextType | null>(null)
@@ -70,25 +76,14 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const PLAYER_SPEED = 5
   const PLATFORM_WIDTH = 60
   const PLATFORM_HEIGHT = 10
-  const PLATFORM_COUNT = 7
+  const PLATFORM_COUNT = 7 // Initial platform count, will adjust based on difficulty
   const SPRING_JUMP_FORCE = -15
   const ROCKET_JUMP_FORCE = -20
   const ROCKET_DURATION = 150 // frames (about 2.5 seconds)
   
-  // Score thresholds for difficulty levels
-  const DIFFICULTY_THRESHOLDS = [
-    0,     // Level 1
-    1000,  // Level 2
-    2500,  // Level 3
-    4000,  // Level 4
-    6000,  // Level 5
-    8500,  // Level 6
-    12000, // Level 7
-    16000, // Level 8
-    20000, // Level 9
-    25000  // Level 10
-  ]
-
+  // Calculate the maximum height player can jump
+  const MAX_JUMP_HEIGHT = Math.abs(JUMP_FORCE * JUMP_FORCE / (2 * GRAVITY));
+  
   const initialGameState: GameState = {
     player: {
       x: GAME_WIDTH / 2 - 20,
@@ -105,33 +100,40 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     score: 0,
     gameOver: false,
     gameStarted: false,
-    difficulty: 1
+    difficulty: 0, // Initial difficulty is 0
+    lastRocketTime: 0 // Initial last rocket generation time
   }
 
   const [gameState, setGameState] = useState<GameState>(initialGameState)
   const [movingDirection, setMovingDirection] = useState<'left' | 'right' | null>(null)
+  const [isPaused, setIsPaused] = useState(false);
+  const [useGravityControl, setUseGravityControl] = useState(false);
 
-  // Get current difficulty based on score
-  const getCurrentDifficulty = (score: number): number => {
-    for (let i = DIFFICULTY_THRESHOLDS.length - 1; i >= 0; i--) {
-      if (score >= DIFFICULTY_THRESHOLDS[i]) {
-        return i + 1
-      }
-    }
-    return 1
+  // Calculate current difficulty based on score
+  const calculateDifficulty = (score: number): number => {
+    return DifficultyManager.calculateDifficulty(score);
   }
 
-  // Create platform based on difficulty
-  const createPlatform = (id: number, x: number, y: number, difficulty: number): Platform => {
-    // Higher difficulty increases chance of special platforms
-    const rand = Math.random() * 100
+  // Create platform function - using configuration from difficulty manager
+  const createPlatform = (id: number, x: number, y: number, difficulty: number, lastPlatformType?: string): Platform => {
+    const config = DifficultyManager.getPlatformConfig(difficulty);
+    const { movingChance, breakableChance, springChance, adjacentBreakablePlatformChance } = config;
     
-    // Basic platform type chances based on difficulty
-    const movingChance = Math.min(5 + (difficulty * 2), 30) // 7% at level 1, up to 30% at level 10
-    const breakableChance = Math.min(3 + (difficulty * 1.5), 25) // 4.5% at level 1, up to 25% at level 10
-    const springChance = Math.min(2 + difficulty, 15) // 3% at level 1, up to 15% at level 10
+    // If the previous platform was breakable and meets the adjacent probability, there's a higher chance to generate another breakable platform
+    if (lastPlatformType === 'breakable' && Math.random() * 100 < adjacentBreakablePlatformChance) {
+      return {
+        id,
+        x,
+        y,
+        width: PLATFORM_WIDTH,
+        type: 'breakable',
+        broken: false
+      };
+    }
     
-    // Special platform logic
+    // Basic platform type probability
+    const rand = Math.random() * 100;
+    
     if (rand < movingChance) {
       return {
         id,
@@ -169,9 +171,12 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }
 
-  // Create initial platforms
+  // Create initial platforms - using platform count from difficulty manager
   const createInitialPlatforms = (): Platform[] => {
-    const platforms: Platform[] = []
+    const platforms: Platform[] = [];
+    const difficulty = 0; // Initial difficulty is 0
+    const config = DifficultyManager.getPlatformConfig(difficulty);
+    const platformCount = config.platformCount;
     
     // Always add a starting platform below the player
     platforms.push({
@@ -180,42 +185,53 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       y: GAME_HEIGHT / 2 + 50,
       width: PLATFORM_WIDTH,
       type: 'normal'
-    })
+    });
     
-    for (let i = 1; i < PLATFORM_COUNT; i++) {
-      platforms.push(
-        createPlatform(
-          i,
-          Math.random() * (GAME_WIDTH - PLATFORM_WIDTH),
-          (GAME_HEIGHT / PLATFORM_COUNT) * i,
-          1 // starting difficulty
-        )
-      )
+    let lastPlatformType = 'normal';
+    
+    for (let i = 1; i < platformCount; i++) {
+      const platform = createPlatform(
+        i,
+        Math.random() * (GAME_WIDTH - PLATFORM_WIDTH),
+        (GAME_HEIGHT / platformCount) * i,
+        difficulty,
+        lastPlatformType
+      );
+      
+      platforms.push(platform);
+      lastPlatformType = platform.type;
     }
     
-    return platforms
+    return platforms;
   }
 
-  // Create powerup with a certain probability
-  const tryCreatePowerup = (difficulty: number): PowerUp | null => {
-    // 大幅降低火箭生成概率
-    const rocketChance = Math.min(0.5 + (difficulty * 0.1), 2) // 0.6% at level 1, up to 2% at level 10
+  // Try to create power-ups - using power-up probability and cooldown from difficulty manager
+  const tryCreatePowerup = (difficulty: number, currentTime: number, lastRocketTime: number): { powerup: PowerUp | null, newLastRocketTime: number } => {
+    const config = DifficultyManager.getPowerUpConfig(difficulty);
+    const { rocketChance, rocketCooldown } = config;
     
-    const rand = Math.random() * 100
+    // Check rocket cooldown time
+    const rocketOnCooldown = currentTime - lastRocketTime < rocketCooldown;
     
-    if (rand < rocketChance) {
+    const rand = Math.random() * 100;
+    
+    // Only consider generating a rocket if it's not on cooldown
+    if (!rocketOnCooldown && rand < rocketChance) {
       return {
-        id: Date.now() + Math.random(),
-        x: Math.random() * (GAME_WIDTH - 20),
-        y: -30, // Start above the screen
-        width: 20,
-        height: 30,
-        type: 'rocket',
-        active: true
+        powerup: {
+          id: Date.now() + Math.random(),
+          x: Math.random() * (GAME_WIDTH - 20),
+          y: -30, // Start above the screen
+          width: 20,
+          height: 30,
+          type: 'rocket',
+          active: true
+        },
+        newLastRocketTime: currentTime
       }
     }
     
-    return null
+    return { powerup: null, newLastRocketTime: lastRocketTime };
   }
 
   const startGame = () => {
@@ -246,16 +262,33 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setMovingDirection(null)
   }
 
+  const pauseGame = () => {
+    setIsPaused(true);
+  }
+  
+  const resumeGame = () => {
+    setIsPaused(false);
+  }
+
+  // New method to switch gravity control
+  const toggleGravityControl = (enabled: boolean) => {
+    setUseGravityControl(enabled);
+  }
+
   // Game loop
   useEffect(() => {
-    if (!gameState.gameStarted || gameState.gameOver) return
+    if (!gameState.gameStarted || gameState.gameOver || isPaused) return
+
+    let frameCount = 0; // Frame counter
 
     const gameLoop = setInterval(() => {
+      frameCount++;
+      
       setGameState(prevState => {
         if (prevState.gameOver) return prevState
 
-        // Update current difficulty based on score
-        const difficulty = getCurrentDifficulty(prevState.score)
+        // Update difficulty value - based on current score
+        const difficulty = calculateDifficulty(prevState.score);
 
         // Update player position
         let newX = prevState.player.x
@@ -276,11 +309,11 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         let newY = prevState.player.y
         let newVelocityY = prevState.player.velocityY
 
-        // Handle rocket powerup
+        // Handle rocket power-up
         if (prevState.player.activePowerup === 'rocket') {
           newVelocityY = ROCKET_JUMP_FORCE
           
-          // Decrease rocket timer
+          // Reduce rocket timer
           let newPowerupTimer = prevState.player.powerupTimer - 1
           let activePowerup = prevState.player.activePowerup
           
@@ -288,15 +321,16 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             activePowerup = null as any // Type assertion to fix type error
           }
           
-          // Update player with rocket effect
+          // Update player position (rocket effect)
           newY += newVelocityY
           
-          // Move camera and generate new platforms during rocket power-up
+          // Move camera and generate new platforms during rocket power
           let newPlatforms: Platform[] = [...prevState.platforms]
           let newPowerups = [...prevState.powerups]
           let newScore = prevState.score
+          let lastRocketTime = prevState.lastRocketTime
           
-          // Calculate how much we need to move everything down
+          // Calculate how much to move down
           const delta = Math.min(20, GAME_HEIGHT / 2 - newY) // Limit max delta per frame
           
           if (delta > 0) {
@@ -308,34 +342,55 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               y: platform.y + delta
             }))
             
-            // Move powerups down
+            // Move power-ups down
             newPowerups = newPowerups.map(powerup => ({
               ...powerup,
               y: powerup.y + delta
             }))
             
-            // Remove platforms and powerups that went below the screen
+            // Remove platforms and power-ups that are below the bottom of the screen
             newPlatforms = newPlatforms.filter(platform => platform.y < GAME_HEIGHT)
             newPowerups = newPowerups.filter(powerup => powerup.y < GAME_HEIGHT)
             
+            // Get platform configuration and spacing configuration
+            const platformConfig = DifficultyManager.getPlatformConfig(difficulty);
+            const spacingConfig = DifficultyManager.getPlatformSpacing(difficulty, MAX_JUMP_HEIGHT);
+            
             // Generate new platforms at the top
-            while (newPlatforms.length < PLATFORM_COUNT) {
-              const highestPlatformY = Math.min(...newPlatforms.map(p => p.y))
-              const newX = Math.random() * (GAME_WIDTH - PLATFORM_WIDTH)
-              const newY = highestPlatformY - Math.random() * 60 - 40 // Random height difference
+            let lastPlatformType = newPlatforms.length > 0 ? newPlatforms[0].type : 'normal';
+            
+            while (newPlatforms.length < platformConfig.platformCount) {
+              const highestPlatformY = Math.min(...newPlatforms.map(p => p.y));
               
-              newPlatforms.push(
-                createPlatform(
-                  Date.now() + Math.random(),
-                  newX,
-                  newY,
-                  difficulty
-                )
-              )
+              // Use spacing configuration to determine new platform Y coordinate
+              const spacing = Math.random() * (spacingConfig.maxSpacing - spacingConfig.minSpacing) + spacingConfig.minSpacing;
+              const newY = highestPlatformY - spacing;
+              
+              // Random X coordinate
+              const newX = Math.random() * (GAME_WIDTH - PLATFORM_WIDTH);
+              
+              const platform = createPlatform(
+                Date.now() + Math.random(),
+                newX,
+                newY,
+                difficulty,
+                lastPlatformType
+              );
+              
+              newPlatforms.push(platform);
+              lastPlatformType = platform.type;
             }
             
-            // Update score based on how high the rocket has taken the player
-            newScore += Math.floor(delta)
+            // Try to create new power-ups
+            const { powerup, newLastRocketTime } = tryCreatePowerup(difficulty, frameCount, lastRocketTime);
+            if (powerup) {
+              powerup.y = -30 - Math.random() * 50; // Random height (above the screen)
+              newPowerups.push(powerup);
+              lastRocketTime = newLastRocketTime;
+            }
+            
+            // Update score based on player jump height
+            newScore += Math.floor(delta);
           }
           
           return {
@@ -351,7 +406,8 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             platforms: newPlatforms,
             powerups: newPowerups,
             score: newScore,
-            difficulty
+            difficulty,
+            lastRocketTime
           }
         }
 
@@ -359,7 +415,7 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         newVelocityY += GRAVITY
         newY += newVelocityY
 
-        // Check collision with platforms and initialize platform array
+        // Check for collision with platforms and initialize platform array
         let newPlatforms = [...prevState.platforms];
         let collisionPlatformIndex = -1;
         let isJumping = prevState.player.isJumping;
@@ -377,42 +433,42 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               newX < platform.x + platform.width &&
               prevState.player.y + prevState.player.height <= platform.y
             ) {
-              // 检测到碰撞，记录平台索引
+              // Collision detected, record platform index
               collisionPlatformIndex = i;
               
-              // 进行弹跳处理
+              // Handle jump processing
               switch (platform.type) {
                 case 'breakable':
-                  // 只有当平台未破碎时才弹跳
+                  // Only jump if platform is not broken
                   if (!platform.broken) {
                     newY = platform.y - prevState.player.height
                     newVelocityY = JUMP_FORCE
                     isJumping = true
                     
-                    // 标记为已破碎 - 创建新对象而不是修改原对象
+                    // Mark as broken - create new object instead of modifying original object
                     newPlatforms[i] = { ...platform, broken: true };
                   }
                   break;
                 case 'spring':
-                  // 弹簧平台 - 更高的弹跳
+                  // Spring platform - higher jump
                   newY = platform.y - prevState.player.height
                   newVelocityY = SPRING_JUMP_FORCE
                   isJumping = true
                   break;
                 default:
-                  // 普通平台 - 正常弹跳
+                  // Normal platform - normal jump
                   newY = platform.y - prevState.player.height
                   newVelocityY = JUMP_FORCE
                   isJumping = true
               }
               
-              // 找到一个平台后就跳出循环
+              // Jump out of loop once a platform is found
               break;
             }
           }
         }
 
-        // Check collision with powerups
+        // Check for collision with power-ups
         let newPowerups = [...prevState.powerups]
         let activePowerup = prevState.player.activePowerup
         let powerupTimer = prevState.player.powerupTimer
@@ -425,24 +481,22 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             newY + prevState.player.height > powerup.y &&
             newY < powerup.y + powerup.height
           ) {
-            // Collect powerup
+            // Collect power-up
             if (powerup.type === 'rocket') {
               activePowerup = 'rocket' as any
               powerupTimer = ROCKET_DURATION
               newVelocityY = ROCKET_JUMP_FORCE
-            } else if (powerup.type === 'spring') {
-              newVelocityY = SPRING_JUMP_FORCE
             }
             return false
           }
           return true
         })
 
-        // 更新移动平台和处理破碎平台下落
+        // Update moving platforms and handle broken platform fall
         newPlatforms = newPlatforms.map((platform, index) => {
-          // 跳过刚刚处理过的碰撞平台，避免重复处理
+          // Skip just processed collision platform to avoid repeated processing
           if (index === collisionPlatformIndex && platform.type === 'breakable') {
-            return platform; // 已经在碰撞检测时更新过了
+            return platform; // Already updated in collision detection
           }
           
           if (platform.type === 'moving' && platform.direction) {
@@ -462,70 +516,85 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             return { ...platform, x: newX }
           } else if (platform.type === 'breakable' && platform.broken) {
-            // 使破碎的平台下落
+            // Make broken platform fall
             return { ...platform, y: platform.y + 5 }
           }
           return platform
         });
         
-        // 移除已经掉出屏幕的破碎平台
+        // Remove broken platforms that are below the bottom of the screen
         newPlatforms = newPlatforms.filter(platform => {
           return !(platform.type === 'breakable' && platform.broken && platform.y > GAME_HEIGHT)
         });
 
-        // Generate new platforms and move camera if player reaches half height
-        let newScore = prevState.score
+        // If player reaches half screen height, generate new platforms and move camera
+        let newScore = prevState.score;
+        let lastRocketTime = prevState.lastRocketTime;
         
         if (newY < GAME_HEIGHT / 2 && newVelocityY < 0) {
-          // Calculate how much we need to move everything down
-          const delta = GAME_HEIGHT / 2 - newY
-          newY = GAME_HEIGHT / 2
+          // Calculate how much to move down
+          const delta = GAME_HEIGHT / 2 - newY;
+          newY = GAME_HEIGHT / 2;
           
           // Move platforms down
           newPlatforms = newPlatforms.map(platform => ({
             ...platform,
             y: platform.y + delta
-          }))
+          }));
           
-          // Move powerups down
+          // Move power-ups down
           newPowerups = newPowerups.map(powerup => ({
             ...powerup,
             y: powerup.y + delta
-          }))
+          }));
           
-          // Remove platforms and powerups that went below the screen
-          newPlatforms = newPlatforms.filter(platform => platform.y < GAME_HEIGHT)
-          newPowerups = newPowerups.filter(powerup => powerup.y < GAME_HEIGHT)
+          // Remove platforms and power-ups that are below the bottom of the screen
+          newPlatforms = newPlatforms.filter(platform => platform.y < GAME_HEIGHT);
+          newPowerups = newPowerups.filter(powerup => powerup.y < GAME_HEIGHT);
+          
+          // Get platform configuration and spacing configuration
+          const platformConfig = DifficultyManager.getPlatformConfig(difficulty);
+          const spacingConfig = DifficultyManager.getPlatformSpacing(difficulty, MAX_JUMP_HEIGHT);
           
           // Generate new platforms at the top
-          while (newPlatforms.length < PLATFORM_COUNT) {
-            const highestPlatformY = Math.min(...newPlatforms.map(p => p.y))
-            const newX = Math.random() * (GAME_WIDTH - PLATFORM_WIDTH)
-            const newY = highestPlatformY - Math.random() * 60 - 40 // Random height difference
+          let lastPlatformType = newPlatforms.length > 0 ? newPlatforms[0].type : 'normal';
+          
+          while (newPlatforms.length < platformConfig.platformCount) {
+            const highestPlatformY = Math.min(...newPlatforms.map(p => p.y));
             
-            newPlatforms.push(
-              createPlatform(
-                Date.now() + Math.random(),
-                newX,
-                newY,
-                difficulty
-              )
-            )
+            // Use spacing configuration to determine new platform Y coordinate
+            const spacing = Math.random() * (spacingConfig.maxSpacing - spacingConfig.minSpacing) + spacingConfig.minSpacing;
+            const newY = highestPlatformY - spacing;
+            
+            // Random X coordinate
+            const newX = Math.random() * (GAME_WIDTH - PLATFORM_WIDTH);
+            
+            const platform = createPlatform(
+              Date.now() + Math.random(),
+              newX,
+              newY,
+              difficulty,
+              lastPlatformType
+            );
+            
+            newPlatforms.push(platform);
+            lastPlatformType = platform.type;
           }
           
-          // Try to create new powerups
-          const powerup = tryCreatePowerup(difficulty)
+          // Try to create new power-ups
+          const { powerup, newLastRocketTime } = tryCreatePowerup(difficulty, frameCount, lastRocketTime);
           if (powerup) {
-            powerup.y = -30 - Math.random() * 50 // Random height above screen
-            newPowerups.push(powerup)
+            powerup.y = -30 - Math.random() * 50; // Random height (above the screen)
+            newPowerups.push(powerup);
+            lastRocketTime = newLastRocketTime;
           }
           
-          // Update score based on how high the player jumped
-          newScore += Math.floor(delta)
+          // Update score based on player jump height
+          newScore += Math.floor(delta);
         }
 
-        // Check game over
-        const gameOver = newY > GAME_HEIGHT
+        // Check for game over
+        const gameOver = newY > GAME_HEIGHT;
 
         return {
           ...prevState,
@@ -542,15 +611,16 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           powerups: newPowerups,
           score: newScore,
           gameOver,
-          difficulty
+          difficulty,
+          lastRocketTime
         }
       })
     }, 16) // ~60 FPS
 
     return () => clearInterval(gameLoop)
-  }, [gameState.gameStarted, gameState.gameOver, movingDirection])
+  }, [gameState.gameStarted, gameState.gameOver, movingDirection, isPaused])
 
-  // Handle keyboard controls
+  // Handle keyboard control
   useEffect(() => {
     if (!gameState.gameStarted) return
     
@@ -577,6 +647,59 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [gameState.gameStarted])
 
+  // Handle device orientation
+  useEffect(() => {
+    if (!gameState.gameStarted || !useGravityControl) return;
+
+    const handleDeviceOrientation = (event: DeviceOrientationEvent) => {
+      // Check if game is running
+      if (gameState.gameOver || isPaused) return;
+
+      // Get gamma value (horizontal tilt)
+      const gamma = event.gamma;
+      
+      if (gamma === null) return;
+
+      // Control movement based on device tilt angle
+      if (gamma < -10) {
+        // Left tilt
+        movePlayerLeft();
+      } else if (gamma > 10) {
+        // Right tilt
+        movePlayerRight();
+      } else {
+        // Device flat, stop moving
+        stopMoving();
+      }
+    };
+
+    // Request device orientation permission and add event listener
+    const requestDeviceOrientationPermission = async () => {
+      // @ts-ignore - DeviceOrientationEvent.requestPermission() is non-standard API
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          // @ts-ignore
+          const permission = await DeviceOrientationEvent.requestPermission();
+          if (permission === 'granted') {
+            window.addEventListener('deviceorientation', handleDeviceOrientation);
+          }
+        } catch (error) {
+          console.error('Unable to get device orientation permission:', error);
+        }
+      } else {
+        // Directly add event listener to devices that don't require permission
+        window.addEventListener('deviceorientation', handleDeviceOrientation);
+      }
+    };
+
+    requestDeviceOrientationPermission();
+
+    // Cleanup function
+    return () => {
+      window.removeEventListener('deviceorientation', handleDeviceOrientation);
+    };
+  }, [gameState.gameStarted, gameState.gameOver, isPaused, useGravityControl]);
+
   return (
     <GameContext.Provider 
       value={{ 
@@ -586,7 +709,11 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         movePlayerLeft, 
         movePlayerRight, 
         stopMoving,
-        movingDirection
+        movingDirection,
+        pauseGame,
+        resumeGame,
+        toggleGravityControl,
+        useGravityControl
       }}
     >
       {children}
