@@ -505,17 +505,43 @@ export const DoodleJump: React.FC = () => {
   const drawBrokenPlatform = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, color: string) => {
     ctx.fillStyle = color
     
-    // 绘制碎片
-    for (let i = 0; i < 4; i++) {
-      const pieceX = x + (width / 4) * i
-      const pieceWidth = width / 4 - 2
-      const pieceY = y + Math.random() * 3 // 碎片位置有些许偏移
+    // 添加震动效果
+    const shakeX = Math.random() * 2 - 1
+    const shakeY = Math.random() * 2
+    
+    // 绘制更明显的碎片
+    for (let i = 0; i < 5; i++) {
+      const pieceX = x + (width / 5) * i + shakeX
+      const pieceWidth = width / 5 - 3
+      const pieceY = y + Math.random() * 4 + shakeY // 碎片位置更加随机
+      const pieceRotation = (Math.random() - 0.5) * 0.3 // 添加随机旋转
       
+      ctx.save()
+      ctx.translate(pieceX + pieceWidth/2, pieceY + 4)
+      ctx.rotate(pieceRotation)
       ctx.beginPath()
-      ctx.moveTo(pieceX, pieceY)
-      ctx.lineTo(pieceX + pieceWidth, pieceY)
-      ctx.lineTo(pieceX + pieceWidth, pieceY + 8)
-      ctx.lineTo(pieceX, pieceY + 8)
+      ctx.roundRect(-pieceWidth/2, -4, pieceWidth, 8, 2)
+      ctx.fill()
+      
+      // 添加裂缝线
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)'
+      ctx.lineWidth = 0.5
+      ctx.beginPath()
+      ctx.moveTo(-pieceWidth/4, -4)
+      ctx.lineTo(-pieceWidth/4, 0)
+      ctx.stroke()
+      ctx.restore()
+    }
+    
+    // 添加掉落的小碎片
+    for (let i = 0; i < 3; i++) {
+      const particleX = x + Math.random() * width
+      const particleY = y + 8 + Math.random() * 5
+      const particleSize = Math.random() * 3 + 1
+      
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.arc(particleX, particleY, particleSize, 0, Math.PI * 2)
       ctx.fill()
     }
   }

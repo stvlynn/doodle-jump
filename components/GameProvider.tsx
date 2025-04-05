@@ -198,8 +198,8 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Create powerup with a certain probability
   const tryCreatePowerup = (difficulty: number): PowerUp | null => {
-    // Higher difficulty increases chance of powerups
-    const rocketChance = Math.min(2 + (difficulty * 0.5), 8) // 2.5% at level 1, up to 8% at level 10
+    // 大幅降低火箭生成概率
+    const rocketChance = Math.min(0.5 + (difficulty * 0.1), 2) // 0.6% at level 1, up to 2% at level 10
     
     const rand = Math.random() * 100
     
@@ -359,10 +359,11 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         newVelocityY += GRAVITY
         newY += newVelocityY
 
-        // Check if player is jumping through platforms
-        let isJumping = prevState.player.isJumping
+        // Check collision with platforms and initialize platform array
+        let newPlatforms = [...prevState.platforms];
+        let collisionPlatformIndex = -1;
+        let isJumping = prevState.player.isJumping;
         
-        // Check collision with platforms
         if (newVelocityY > 0) { // Only check when falling
           for (let i = 0; i < prevState.platforms.length; i++) {
             const platform = prevState.platforms[i]
@@ -376,33 +377,37 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               newX < platform.x + platform.width &&
               prevState.player.y + prevState.player.height <= platform.y
             ) {
-              // Handle different platform types
+              // 检测到碰撞，记录平台索引
+              collisionPlatformIndex = i;
+              
+              // 进行弹跳处理
               switch (platform.type) {
                 case 'breakable':
-                  // Break the platform after jumping on it
+                  // 只有当平台未破碎时才弹跳
                   if (!platform.broken) {
-                    // Allow one jump first
                     newY = platform.y - prevState.player.height
                     newVelocityY = JUMP_FORCE
                     isJumping = true
                     
-                    // Mark platform as broken, it will fall in the next update
-                    prevState.platforms[i] = { ...platform, broken: true }
+                    // 标记为已破碎 - 创建新对象而不是修改原对象
+                    newPlatforms[i] = { ...platform, broken: true };
                   }
-                  break
+                  break;
                 case 'spring':
-                  // Higher jump from spring platform
+                  // 弹簧平台 - 更高的弹跳
                   newY = platform.y - prevState.player.height
                   newVelocityY = SPRING_JUMP_FORCE
                   isJumping = true
-                  break
+                  break;
                 default:
-                  // Normal jump
+                  // 普通平台 - 正常弹跳
                   newY = platform.y - prevState.player.height
                   newVelocityY = JUMP_FORCE
                   isJumping = true
               }
-              break
+              
+              // 找到一个平台后就跳出循环
+              break;
             }
           }
         }
@@ -433,8 +438,13 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           return true
         })
 
-        // Update moving platforms
-        let newPlatforms: Platform[] = prevState.platforms.map(platform => {
+        // 更新移动平台和处理破碎平台下落
+        newPlatforms = newPlatforms.map((platform, index) => {
+          // 跳过刚刚处理过的碰撞平台，避免重复处理
+          if (index === collisionPlatformIndex && platform.type === 'breakable') {
+            return platform; // 已经在碰撞检测时更新过了
+          }
+          
           if (platform.type === 'moving' && platform.direction) {
             let newX = platform.x
             const speed = 1 + (difficulty * 0.2) // Speed increases with difficulty
@@ -452,16 +462,16 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             return { ...platform, x: newX }
           } else if (platform.type === 'breakable' && platform.broken) {
-            // Make broken platforms fall
+            // 使破碎的平台下落
             return { ...platform, y: platform.y + 5 }
           }
           return platform
-        })
+        });
         
-        // Filter out platforms that have fallen off screen
+        // 移除已经掉出屏幕的破碎平台
         newPlatforms = newPlatforms.filter(platform => {
           return !(platform.type === 'breakable' && platform.broken && platform.y > GAME_HEIGHT)
-        })
+        });
 
         // Generate new platforms and move camera if player reaches half height
         let newScore = prevState.score
