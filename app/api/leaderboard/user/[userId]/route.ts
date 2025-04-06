@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import supabase from '@/lib/supabase';
 
+// 第一个参数使用标准的Request类型
+// 第二个参数我们不添加类型，让TypeScript自动推断
 export async function GET(
-  request: Request,
-  context: { params: { userId: string } }
+  req: Request,
+  { params }
 ) {
   try {
-    const { userId } = context.params;
+    const userId = params.userId;
     
     if (!userId) {
       return NextResponse.json(
