@@ -18,6 +18,9 @@ export const createSupabaseClient = () => {
     },
     auth: {
       persistSession: false // 避免浏览器缓存问题
+    },
+    db: {
+      schema: 'public'
     }
   })
 }
@@ -26,19 +29,24 @@ export const createSupabaseClient = () => {
 export const getLeaderboard = async () => {
   const supabase = createSupabaseClient()
   
-  // 获取分数降序排序的前50条记录
-  const { data, error } = await supabase
-    .from('users')
-    .select('id, name, profile_image, doodle_score')
-    .order('doodle_score', { ascending: false })
-    .limit(50)
+  try {
+    // 获取分数降序排序的前50条记录
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, profile_image, doodle_score')
+      .order('doodle_score', { ascending: false })
+      .limit(50)
+      
+    if (error) {
+      console.error('获取排行榜失败:', error)
+      return []
+    }
     
-  if (error) {
-    console.error('获取排行榜失败:', error)
+    return data || []
+  } catch (e) {
+    console.error('获取排行榜过程中发生错误:', e);
     return []
   }
-  
-  return data || []
 }
 
 // 添加详细的类型定义和数据库表结构
@@ -68,15 +76,14 @@ export const submitScore = async (userData: {
     console.log('正在提交分数:', userData);
     const supabase = createSupabaseClient()
     
-    // 首先检查用户是否已存在并获取其当前分数 - 使用更可靠的查询方式
+    // 首先检查用户是否已存在并获取其当前分数 - 使用标准查询格式
     const { data: existingUser, error: queryError } = await supabase
       .from('users')
       .select('doodle_score')
       .eq('id', userData.id)
-      .maybeSingle() // 使用maybeSingle而不是single，防止404错误
+      .maybeSingle()
     
     if (queryError) {
-      // 如果是非"未找到"错误，需要记录并返回
       console.error('查询用户分数失败:', queryError);
       return {
         success: false,
@@ -103,14 +110,14 @@ export const submitScore = async (userData: {
     if (!existingUser || userData.score > (existingUser.doodle_score || 0)) {
       console.log('提交新纪录到数据库:', userRecord);
       
-      // 使用upsert替代POST请求，确保幂等性并避免重复记录
+      // 使用Supabase的原生upsert功能
       const { error: upsertError } = await supabase
         .from('users')
-        .upsert(userRecord, {
-          onConflict: 'id', // 指定冲突解决策略
-          ignoreDuplicates: false // 允许更新现有记录
+        .upsert(userRecord, { 
+          onConflict: 'id',
+          ignoreDuplicates: false
         })
-        
+      
       if (upsertError) {
         console.error('提交分数失败:', upsertError);
         return {

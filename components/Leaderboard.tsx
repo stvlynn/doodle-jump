@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { getLeaderboard, getUserRank } from '@/utils/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { 
@@ -89,12 +89,20 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
   }>({});
   const [loading, setLoading] = useState(true);
   const [showConfetti, setShowConfetti] = useState(false);
+  const isLoadingRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
+  
+  // 使用工具函数创建可控制的延迟
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
   // 加载排行榜数据
   useEffect(() => {
+    // 如果dialog未显示或者已经在加载中，则跳过
+    if (!open || isLoadingRef.current) return;
+    
     const fetchLeaderboard = async () => {
-      if (!open) return;
-      
+      // 设置加载锁，避免重复请求
+      isLoadingRef.current = true;
       setLoading(true);
       
       // 设置最大重试次数
@@ -102,72 +110,81 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
       let retryCount = 0;
       let success = false;
       
-      while (retryCount < maxRetries && !success) {
-        try {
-          console.log(`尝试获取排行榜数据 (${retryCount + 1}/${maxRetries})`);
-          
-          // 获取排行榜数据 - 所有用户都可以查看
-          const data = await getLeaderboard();
-          
-          if (data && data.length > 0) {
-            console.log('成功获取排行榜数据', data);
+      try {
+        while (retryCount < maxRetries && !success) {
+          try {
+            console.log(`尝试获取排行榜数据 (${retryCount + 1}/${maxRetries})`);
             
-            // 添加排名信息
-            const rankedData = data.map((item: any, index: number) => ({
-              ...item,
-              rank: index + 1
-            })) as LeaderboardUser[];
+            // 获取排行榜数据 - 所有用户都可以查看
+            const data = await getLeaderboard();
             
-            setLeaderboard(rankedData);
-            
-            // 设置前三名
-            setTopThree(rankedData.slice(0, 3));
-            
-            // 如果用户已登录，获取用户排名相关信息
-            if (isAuthenticated && user?.id) {
-              const userIndex = rankedData.findIndex(item => item.id === user.id);
+            if (data && Array.isArray(data) && data.length > 0) {
+              console.log('成功获取排行榜数据', data);
               
-              if (userIndex !== -1) {
-                const userRank = rankedData[userIndex];
-                const prevUser = userIndex > 0 ? rankedData[userIndex - 1] : undefined;
-                const nextUser = userIndex < rankedData.length - 1 ? rankedData[userIndex + 1] : undefined;
+              // 添加排名信息
+              const rankedData = data.map((item: any, index: number) => ({
+                ...item,
+                rank: index + 1
+              })) as LeaderboardUser[];
+              
+              setLeaderboard(rankedData);
+              
+              // 设置前三名
+              setTopThree(rankedData.slice(0, 3));
+              
+              // 如果用户已登录，获取用户排名相关信息
+              if (isAuthenticated && user?.id) {
+                const userIndex = rankedData.findIndex(item => item.id === user.id);
                 
-                setUserRankInfo({ userRank, prevUser, nextUser });
-                console.log('用户排名信息:', { rank: userIndex + 1, total: rankedData.length });
-              } else {
-                console.log('用户未上榜');
-                // 清空用户排名信息
-                setUserRankInfo({});
+                if (userIndex !== -1) {
+                  const userRank = rankedData[userIndex];
+                  const prevUser = userIndex > 0 ? rankedData[userIndex - 1] : undefined;
+                  const nextUser = userIndex < rankedData.length - 1 ? rankedData[userIndex + 1] : undefined;
+                  
+                  setUserRankInfo({ userRank, prevUser, nextUser });
+                  console.log('用户排名信息:', { rank: userIndex + 1, total: rankedData.length });
+                } else {
+                  console.log('用户未上榜');
+                  // 清空用户排名信息
+                  setUserRankInfo({});
+                }
               }
+              
+              success = true;
+              hasLoadedOnceRef.current = true;
+            } else {
+              throw new Error('排行榜数据为空或格式不正确');
             }
+          } catch (error) {
+            console.error(`加载排行榜失败 (尝试 ${retryCount + 1}/${maxRetries}):`, error);
+            retryCount++;
             
-            success = true;
-          } else {
-            throw new Error('排行榜数据为空');
-          }
-        } catch (error) {
-          console.error(`加载排行榜失败 (尝试 ${retryCount + 1}/${maxRetries}):`, error);
-          retryCount++;
-          
-          if (retryCount < maxRetries) {
-            // 指数退避策略 - 每次重试等待时间增加
-            const delay = 1000 * Math.pow(2, retryCount - 1);
-            console.log(`等待 ${delay}ms 后重试...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
+            if (retryCount < maxRetries) {
+              // 指数退避策略 - 每次重试等待时间增加
+              const delayTime = 1000 * Math.pow(2, retryCount - 1);
+              console.log(`等待 ${delayTime}ms 后重试...`);
+              await delay(delayTime);
+            }
           }
         }
+      } finally {
+        // 无论成功与否都释放加载锁
+        isLoadingRef.current = false;
+        setLoading(false);
       }
       
       // 如果创造新纪录，显示礼花特效
       if (isNewRecord) {
-        setShowConfetti(true);
-        // 稍延迟一点显示礼花，确保组件已经完全加载
-        await sleep(300);
-        setShowConfetti(true);
-        setTimeout(() => setShowConfetti(false), 3000);
+        try {
+          setShowConfetti(true);
+          // 稍延迟一点显示礼花，确保组件已经完全加载
+          await delay(300);
+          setShowConfetti(true);
+          setTimeout(() => setShowConfetti(false), 3000);
+        } catch (e) {
+          console.error('显示礼花效果失败:', e);
+        }
       }
-      
-      setLoading(false);
     };
     
     fetchLeaderboard();

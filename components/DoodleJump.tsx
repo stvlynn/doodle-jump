@@ -604,18 +604,29 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
   // 在渲染函数return语句中添加状态变量
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [isNewRecord, setIsNewRecord] = useState(false);
+  // 使用useRef来存储提交状态，确保在异步操作中的稳定性
+  const isSubmittingRef = useRef(false);
 
   // 在gameState.gameOver监听中添加提交分数功能
   useEffect(() => {
     // 当游戏结束时，如果用户已登录，提交分数
-    let isSubmitting = false; // 防止重复提交的锁
-    
     const handleGameOver = async () => {
-      if (gameState.gameOver && isAuthenticated && user && !isSubmitting) {
-        // 设置锁避免重复提交
-        isSubmitting = true;
-        console.log('游戏结束，准备提交分数');
-        
+      // 如果已经在提交或不符合提交条件，则跳过
+      if (!gameState.gameOver || !isAuthenticated || !user || isSubmittingRef.current) {
+        if (gameState.gameOver && !isAuthenticated) {
+          // 游戏结束但用户未登录
+          console.log('游戏结束，但用户未登录，不提交分数');
+          // 显示提示，鼓励用户登录
+          displayNotification('登录后可以记录分数并查看排行榜!');
+        }
+        return;
+      }
+      
+      // 设置锁避免重复提交
+      isSubmittingRef.current = true;
+      console.log('游戏结束，准备提交分数');
+      
+      try {
         // 设置最大重试次数
         const maxRetries = 3;
         let retryCount = 0;
@@ -667,24 +678,14 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
           // 可以选择显示失败通知
           displayNotification('无法提交分数，请稍后再试');
         }
-        
-        // 完成后释放锁
-        isSubmitting = false;
-      } else if (gameState.gameOver && !isAuthenticated) {
-        // 游戏结束但用户未登录
-        console.log('游戏结束，但用户未登录，不提交分数');
-        // 显示提示，鼓励用户登录
-        displayNotification('登录后可以记录分数并查看排行榜!');
+      } finally {
+        // 确保无论成功或失败，都释放锁
+        isSubmittingRef.current = false;
       }
     };
     
     // 游戏结束时调用一次
     handleGameOver();
-    
-    // 清理函数
-    return () => {
-      isSubmitting = false;
-    };
   }, [gameState.gameOver, isAuthenticated, user, gameState.score]);
 
   // Render loading state or game canvas
