@@ -1,202 +1,229 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { getLeaderboard, getUserRank } from '@/utils/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { LeaderboardEntry, getLeaderboard, getUserRank } from '@/lib/leaderboard';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogFooter 
+} from '@/components/ui/dialog';
+import Image from 'next/image';
+import Link from 'next/link';
+import { sleep } from '@/lib/utils';
 
-// Leaderboard item component
-const LeaderboardItem = ({ 
-  entry, 
-  isCurrentUser = false 
-}: { 
-  entry: LeaderboardEntry; 
-  isCurrentUser?: boolean;
-}) => {
-  const handleUserClick = () => {
-    // Navigate to user's X profile
-    window.open(`https://x.com/${entry.username}`, '_blank');
-  };
-  
-  return (
-    <div 
-      className={`flex items-center p-2 rounded-md cursor-pointer transition-colors ${
-        isCurrentUser ? 'bg-green-100 dark:bg-green-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-800/30'
-      }`}
-      onClick={handleUserClick}
-    >
-      <div className="w-8 text-center font-bold">{entry.rank}</div>
-      <div className="w-10 h-10 rounded-full overflow-hidden mx-2">
-        <img 
-          src={entry.profileImage} 
-          alt={entry.displayName} 
-          className="w-full h-full object-cover"
-        />
-      </div>
-      <div className="flex-1">
-        <div className="font-medium">{entry.displayName}</div>
-        <div className="text-sm text-gray-500">@{entry.username}</div>
-      </div>
-      <div className="font-bold text-right" style={{ fontFamily: 'DOTMATRIX, monospace' }}>
-        {entry.doodleScore.toLocaleString()}
-      </div>
-    </div>
-  );
-};
-
-// Confetti effect component
-const Confetti = ({ duration = 1000 }) => {
-  const [active, setActive] = useState(true);
-  
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setActive(false);
-    }, duration);
-    
-    return () => clearTimeout(timer);
-  }, [duration]);
-  
-  if (!active) return null;
-  
-  return (
-    <div className="confetti-container">
-      {Array.from({ length: 50 }).map((_, i) => (
-        <div 
-          key={i} 
-          className="confetti" 
-          style={{
-            left: `${Math.random() * 100}%`,
-            width: `${Math.random() * 10 + 5}px`,
-            height: `${Math.random() * 10 + 5}px`,
-            backgroundColor: `hsl(${Math.random() * 360}, 100%, 50%)`,
-            animationDuration: `${Math.random() * 3 + 2}s`,
-            animationDelay: `${Math.random() * 0.5}s`
-          }}
-        />
-      ))}
-    </div>
-  );
-};
-
-interface LeaderboardProps {
-  score: number;
-  open: boolean;
-  onClose: () => void;
-  isNewRecord?: boolean;
+// 排行榜中的用户类型
+interface LeaderboardUser {
+  id: string;
+  name: string;
+  profile_image: string;
+  doodle_score: number;
+  rank?: number;
 }
 
-export default function Leaderboard({ 
-  score, 
-  open, 
-  onClose, 
-  isNewRecord = false 
-}: LeaderboardProps) {
+// 排行榜属性
+interface LeaderboardProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  score: number;
+  isNewRecord: boolean;
+}
+
+// 礼花特效组件
+const Confetti = () => {
+  return (
+    <div className="fixed inset-0 pointer-events-none z-50">
+      <div className="confetti-container">
+        {Array.from({ length: 100 }).map((_, i) => (
+          <div 
+            key={i} 
+            className="confetti" 
+            style={{
+              left: `${Math.random() * 100}%`,
+              animationDelay: `${Math.random() * 3}s`,
+              backgroundColor: `hsl(${Math.random() * 360}, 100%, 50%)`,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// 用户排名项组件
+const LeaderboardItem = ({ user, highlight = false }: { user: LeaderboardUser, highlight?: boolean }) => {
+  return (
+    <div className={`flex items-center p-2 rounded-lg mb-2 ${highlight ? 'bg-green-100' : ''}`}>
+      <span className="text-lg font-bold w-8 text-right mr-3">{user.rank}.</span>
+      <Link href={`https://x.com/${user.name.replace('@', '')}`} target="_blank" className="flex items-center flex-1">
+        <div className="relative w-8 h-8 rounded-full overflow-hidden mr-2">
+          <Image 
+            src={user.profile_image || '/assets/player.svg'} 
+            alt={user.name}
+            fill
+            className="object-cover rounded-full"
+          />
+        </div>
+        <div className="flex-1 text-sm overflow-hidden">
+          <div className="font-semibold truncate">{user.name}</div>
+          <div className="text-xs text-gray-500 truncate">@{user.name}</div>
+        </div>
+        <div className="font-mono text-right">
+          {user.doodle_score}
+        </div>
+      </Link>
+    </div>
+  );
+};
+
+export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: LeaderboardProps) {
   const { user, isAuthenticated } = useAuth();
-  const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
-  const [userRank, setUserRank] = useState(0);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
+  const [topThree, setTopThree] = useState<LeaderboardUser[]>([]);
+  const [userRankInfo, setUserRankInfo] = useState<{ 
+    userRank?: LeaderboardUser, 
+    prevUser?: LeaderboardUser, 
+    nextUser?: LeaderboardUser 
+  }>({});
   const [loading, setLoading] = useState(true);
-  
-  // Fetch leaderboard data
+  const [showConfetti, setShowConfetti] = useState(false);
+
+  // 加载排行榜数据
   useEffect(() => {
-    if (!open) return;
-    
     const fetchLeaderboard = async () => {
+      if (!open || !isAuthenticated || !user) return;
+
       setLoading(true);
-      
       try {
-        // Get leaderboard data
-        if (isAuthenticated && user) {
-          // If user is logged in, get user's rank and surrounding entries
-          const rankData = await getUserRank(user.id);
-          setLeaderboardEntries(rankData.surroundingEntries);
-          setUserRank(rankData.rank);
-        } else {
-          // If user is not logged in, only get top 5 leaderboard entries
-          const leaderboard = await getLeaderboard();
-          setLeaderboardEntries(leaderboard.slice(0, 5));
+        // 获取排行榜数据
+        const data = await getLeaderboard();
+        
+        // 添加排名信息
+        const rankedData = data.map((item, index) => ({
+          ...item,
+          rank: index + 1
+        })) as LeaderboardUser[];
+        
+        setLeaderboard(rankedData);
+        
+        // 设置前三名
+        setTopThree(rankedData.slice(0, 3));
+        
+        // 如果用户已登录，获取用户排名相关信息
+        if (user?.id) {
+          const userIndex = rankedData.findIndex(item => item.id === user.id);
+          
+          if (userIndex !== -1) {
+            const userRank = rankedData[userIndex];
+            const prevUser = userIndex > 0 ? rankedData[userIndex - 1] : undefined;
+            const nextUser = userIndex < rankedData.length - 1 ? rankedData[userIndex + 1] : undefined;
+            
+            setUserRankInfo({ userRank, prevUser, nextUser });
+          }
+        }
+        
+        // 如果创造新纪录，显示礼花特效
+        if (isNewRecord) {
+          setShowConfetti(true);
+          setTimeout(() => setShowConfetti(false), 3000);
         }
       } catch (error) {
-        console.error('Failed to fetch leaderboard:', error);
+        console.error('加载排行榜失败:', error);
       } finally {
         setLoading(false);
       }
     };
     
     fetchLeaderboard();
-  }, [open, isAuthenticated, user]);
-  
+  }, [open, user, isAuthenticated, isNewRecord]);
+
+  // 自动延迟打开排行榜
+  useEffect(() => {
+    if (isNewRecord && !open) {
+      const timer = setTimeout(() => {
+        onOpenChange(true);
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isNewRecord, open, onOpenChange]);
+
   return (
-    <Dialog open={open} onOpenChange={(open: boolean) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[425px] font-dotmatrix bg-[#8bac0f]/10">
-        <DialogHeader>
-          <DialogTitle className="text-center text-2xl mb-2" style={{ fontFamily: 'DOTMATRIX, monospace' }}>
-            Leaderboard
-          </DialogTitle>
-        </DialogHeader>
-        
-        {/* Score display */}
-        <div className="bg-[#8bac0f]/20 rounded-xl p-4 mb-4 text-center">
-          <div className="mb-1">Your Score</div>
-          <div className="text-4xl font-bold mb-2" style={{ fontFamily: 'DOTMATRIX, monospace' }}>
-            {score.toLocaleString()}
-          </div>
-          
-          {isNewRecord && (
-            <>
-              <div className="text-xl text-green-600 font-bold animate-pulse">
-                New Record!
-              </div>
-              <Confetti duration={1000} />
-            </>
-          )}
-          
-          {userRank > 0 && (
-            <div className="text-gray-600">
-              Current Rank: <span className="font-bold">{userRank}</span>
-            </div>
-          )}
-        </div>
-        
-        {/* Leaderboard list */}
-        <div className="mb-4 overflow-y-auto max-h-[300px]">
-          <div className="text-lg font-bold mb-2">
-            {leaderboardEntries.length > 0 
-              ? 'Game Rankings' 
-              : 'Login to view leaderboard'
-            }
-          </div>
-          
-          {loading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin inline-block w-8 h-8 border-4 border-current border-t-transparent rounded-full"></div>
-              <div className="mt-2">Loading...</div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {leaderboardEntries.map((entry) => (
-                <LeaderboardItem
-                  key={entry.userId}
-                  entry={entry}
-                  isCurrentUser={isAuthenticated && user?.id === entry.userId}
-                />
-              ))}
-              
-              {leaderboardEntries.length === 0 && !loading && (
-                <div className="text-center py-4 text-gray-500">
-                  No leaderboard data available
-                </div>
+    <>
+      {showConfetti && <Confetti />}
+      
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="flex flex-col items-center text-xl">
+              <span className={`text-2xl font-bold mb-1 ${isNewRecord ? 'text-green-600' : ''}`}>
+                {score} 分
+              </span>
+              {isNewRecord && (
+                <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">
+                  新纪录！
+                </span>
               )}
-            </div>
-          )}
-        </div>
-        
-        <DialogFooter>
-          <Button onClick={onClose} className="w-full" style={{ fontFamily: 'DOTMATRIX, monospace' }}>
-            Return to Game
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="my-4">
+            {loading ? (
+              <div className="flex justify-center py-6">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+              </div>
+            ) : (
+              <>
+                {topThree.length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-sm font-semibold mb-2 text-gray-500">最高分</h3>
+                    {topThree.map(item => (
+                      <LeaderboardItem 
+                        key={item.id} 
+                        user={item} 
+                        highlight={user?.id === item.id}
+                      />
+                    ))}
+                  </div>
+                )}
+                
+                {userRankInfo.userRank && userRankInfo.userRank.rank! > 3 && (
+                  <div className="mt-4">
+                    <h3 className="text-sm font-semibold mb-2 text-gray-500">你的排名</h3>
+                    
+                    {userRankInfo.prevUser && (
+                      <LeaderboardItem user={userRankInfo.prevUser} />
+                    )}
+                    
+                    <LeaderboardItem user={userRankInfo.userRank} highlight={true} />
+                    
+                    {userRankInfo.nextUser && (
+                      <LeaderboardItem user={userRankInfo.nextUser} />
+                    )}
+                  </div>
+                )}
+                
+                {!isAuthenticated && (
+                  <div className="text-center text-gray-500 py-4">
+                    登录后查看完整排行榜
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <button
+              className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              onClick={() => onOpenChange(false)}
+            >
+              继续游戏
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 } 
