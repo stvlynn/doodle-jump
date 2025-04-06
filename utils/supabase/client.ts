@@ -113,12 +113,11 @@ export const submitScore = async (userData: {
     if (!existingUser || userData.score > existingScore) {
       console.log('提交新纪录到数据库:', userRecord);
       
-      // 使用Supabase的原生upsert功能
+      // 使用Supabase的原生upsert功能 - 正确语法
       const { error: upsertError } = await supabase
         .from('users')
         .upsert(userRecord, { 
-          onConflict: 'id',
-          ignoreDuplicates: false
+          onConflict: 'id' 
         })
       
       if (upsertError) {
