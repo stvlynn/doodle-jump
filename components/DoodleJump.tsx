@@ -53,13 +53,8 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
         setUserProfileImage(null);
       };
       
-      // 确保使用完整的URL
-      if (user.profile_image_url.startsWith('http')) {
-        img.src = user.profile_image_url;
-      } else {
-        // 如果是相对路径，添加基础URL
-        img.src = `https://twi.am${user.profile_image_url}`;
-      }
+      // 直接使用profile_image_url，不需要额外处理
+      img.src = user.profile_image_url;
     } else {
       setUserProfileImage(null);
     }

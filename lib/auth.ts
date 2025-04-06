@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 export interface TwitterUser {
   id: string;
   name: string;
-  username: string;
+  username?: string;
   profile_image_url: string;
 }
 
@@ -81,18 +81,25 @@ export const logout = () => {
 
 // 从cookie中获取用户信息
 const getUserFromCookies = (): TwitterUser | null => {
-  const twitterId = getCookie('twitter_id');
-  const twitterUsername = getCookie('twitter_username');
-  const twitterName = getCookie('twitter_name');
-  const twitterProfileImage = getCookie('twitter_profile_image');
+  // 新的cookie格式，用户信息存储在名为user的cookie中，格式为URL编码的JSON
+  const userCookie = getCookie('user');
   
-  if (twitterId && twitterUsername) {
-    return {
-      id: twitterId,
-      username: twitterUsername,
-      name: twitterName || twitterUsername,
-      profile_image_url: twitterProfileImage || 'https://pbs.twimg.com/profile_images/default_profile.png'
-    };
+  if (userCookie) {
+    try {
+      // 解码URL编码的JSON字符串
+      const decodedUser = decodeURIComponent(userCookie);
+      const userData = JSON.parse(decodedUser);
+      
+      // 转换成TwitterUser格式
+      return {
+        id: userData.id,
+        name: userData.name,
+        username: userData.name, // 使用name作为username的备选
+        profile_image_url: userData.profileImage
+      };
+    } catch (error) {
+      console.error('Failed to parse user cookie:', error);
+    }
   }
   
   return null;

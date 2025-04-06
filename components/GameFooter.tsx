@@ -24,7 +24,7 @@ export default function GameFooter() {
       >
         <XIcon />
         {isAuthenticated 
-          ? `@${user?.username || ''}`
+          ? `@${user?.name || ''}`
           : 'Login with 𝕏'
         }
       </button>
