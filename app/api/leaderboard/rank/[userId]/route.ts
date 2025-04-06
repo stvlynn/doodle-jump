@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import supabase from '@/lib/supabase';
 
-// 用于类型安全的路由参数接口
-interface RouteParams {
-  params: {
-    userId: string;
-  };
-}
-
 export async function GET(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: { userId: string } }
 ) {
   try {
     const { userId } = params;

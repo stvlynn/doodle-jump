@@ -90,3 +90,85 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to play th
 ## License
 
 [AGPL-3.0](./LICENSE)
+
+## 数据库设置
+
+本项目使用Supabase作为后端数据库。有两种连接方式：
+
+### 方法1: 使用Supabase JavaScript客户端
+
+适用于需要利用Supabase内置功能（如认证、存储等）的场景。
+
+1. 创建`.env.local`文件，设置以下环境变量：
+```
+NEXT_PUBLIC_SUPABASE_URL=https://你的项目ID.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=你的公共匿名密钥
+SUPABASE_SERVICE_KEY=你的服务角色密钥
+```
+
+2. 使用示例：
+```typescript
+// 服务器组件中使用
+import { createClient } from '@/utils/supabase/server';
+
+export default async function Page() {
+  const supabase = createClient();
+  const { data } = await supabase.from('leaderboard').select();
+  // ...
+}
+```
+
+### 方法2: 使用PostgreSQL.js直接连接
+
+适用于需要执行复杂SQL查询或优化数据库连接的场景。
+
+1. 设置数据库URL环境变量：
+```
+# 持久连接模式（适合长时间运行的应用）
+DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.xxxxxxxxxxxx.supabase.co:5432/postgres
+
+# 连接池模式（适合无服务器环境）
+DATABASE_URL=postgresql://postgres.xxxxxxxxxxxx:[YOUR-PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres
+```
+
+2. 使用示例：
+```typescript
+import sql from '@/lib/postgres';
+
+// 简单查询
+const leaderboard = await sql`
+  SELECT * FROM leaderboard 
+  ORDER BY "doodleScore" DESC 
+  LIMIT 10
+`;
+
+// 带参数的查询
+const userId = 'user123';
+const userScores = await sql`
+  SELECT * FROM leaderboard 
+  WHERE "TwitterID" = ${userId}
+`;
+```
+
+## 数据库表初始化
+
+运行`scripts/setup-db.sql`中的SQL语句来初始化数据库表。你可以在Supabase管理面板的SQL编辑器中执行这些语句。
+
+## 示例页面
+
+- `/instruments`: 展示如何从Supabase读取数据的示例页面
+- `/postgres-demo`: 使用PostgreSQL.js直接查询数据库的示例页面
+
+## API路由
+
+- `/api/leaderboard`: 使用Supabase客户端的排行榜API
+- `/api/pg-leaderboard`: 使用PostgreSQL.js的排行榜API
+
+## 部署注意事项
+
+在Vercel上部署时，确保设置以下环境变量：
+
+1. `NEXT_PUBLIC_SUPABASE_URL`: Supabase项目URL
+2. `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase匿名密钥
+3. `SUPABASE_SERVICE_KEY`: Supabase服务角色密钥
+4. `DATABASE_URL`: 如果使用PostgreSQL.js，设置PostgreSQL连接URL
