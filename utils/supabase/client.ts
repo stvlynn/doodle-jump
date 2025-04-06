@@ -59,7 +59,6 @@ export interface UserRecord {
   name: string;
   profile_image: string;
   doodle_score: string;
-  created_at?: string;
 }
 
 export interface ScoreSubmitResult {
@@ -101,7 +100,7 @@ export const submitScore = async (userData: {
       '用户是新用户，继续创建记录'
     );
     
-    // 准备用户记录 - 确保分数以字符串形式存储
+    // 准备用户记录 - 不包含任何时间戳字段
     const userRecord: UserRecord = {
       id: userData.id,
       name: userData.name,
