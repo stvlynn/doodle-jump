@@ -15,6 +15,9 @@ export const createSupabaseClient = () => {
         'apikey': supabaseKey,
         'Authorization': `Bearer ${supabaseKey}`
       }
+    },
+    auth: {
+      persistSession: false // 避免浏览器缓存问题
     }
   })
 }
@@ -65,27 +68,27 @@ export const submitScore = async (userData: {
     console.log('正在提交分数:', userData);
     const supabase = createSupabaseClient()
     
-    // 首先检查用户是否已存在并获取其当前分数
+    // 首先检查用户是否已存在并获取其当前分数 - 使用更可靠的查询方式
     const { data: existingUser, error: queryError } = await supabase
       .from('users')
       .select('doodle_score')
       .eq('id', userData.id)
-      .single()
+      .maybeSingle() // 使用maybeSingle而不是single，防止404错误
     
     if (queryError) {
-      // PGRST116表示没有找到记录，这是正常的，用户是新用户
-      if (queryError.code !== 'PGRST116') {
-        console.error('查询用户分数失败:', queryError);
-        return {
-          success: false,
-          isNewRecord: false,
-          error: queryError.message
-        }
+      // 如果是非"未找到"错误，需要记录并返回
+      console.error('查询用户分数失败:', queryError);
+      return {
+        success: false,
+        isNewRecord: false,
+        error: queryError.message
       }
-      console.log('用户是新用户，继续创建记录');
-    } else {
-      console.log('找到现有用户记录，当前分数:', existingUser?.doodle_score);
     }
+    
+    console.log(existingUser ? 
+      `找到现有用户记录，当前分数: ${existingUser.doodle_score}` : 
+      '用户是新用户，继续创建记录'
+    );
     
     // 准备用户记录
     const userRecord: UserRecord = {
@@ -100,9 +103,13 @@ export const submitScore = async (userData: {
     if (!existingUser || userData.score > (existingUser.doodle_score || 0)) {
       console.log('提交新纪录到数据库:', userRecord);
       
+      // 使用upsert替代POST请求，确保幂等性并避免重复记录
       const { error: upsertError } = await supabase
         .from('users')
-        .upsert(userRecord)
+        .upsert(userRecord, {
+          onConflict: 'id', // 指定冲突解决策略
+          ignoreDuplicates: false // 允许更新现有记录
+        })
         
       if (upsertError) {
         console.error('提交分数失败:', upsertError);
@@ -139,31 +146,36 @@ export const submitScore = async (userData: {
 
 // 获取用户在排行榜中的位置
 export const getUserRank = async (userId: string) => {
-  const supabase = createSupabaseClient()
-  
-  // 获取所有用户分数
-  const { data: scores, error } = await supabase
-    .from('users')
-    .select('id, doodle_score')
-    .order('doodle_score', { ascending: false })
-  
-  if (error || !scores) {
-    console.error('获取排名失败:', error)
-    return null
-  }
-  
-  // 找到用户的排名
-  const userIndex = scores.findIndex(user => user.id === userId)
-  
-  if (userIndex === -1) return null
-  
-  // 返回用户排名和相邻的用户
-  return {
-    rank: userIndex + 1,
-    total: scores.length,
-    // 获取前一名
-    previous: userIndex > 0 ? userIndex - 1 : null,
-    // 获取后一名
-    next: userIndex < scores.length - 1 ? userIndex + 1 : null
+  try {
+    const supabase = createSupabaseClient()
+    
+    // 获取所有用户分数
+    const { data: scores, error } = await supabase
+      .from('users')
+      .select('id, doodle_score')
+      .order('doodle_score', { ascending: false })
+    
+    if (error || !scores) {
+      console.error('获取排名失败:', error)
+      return null
+    }
+    
+    // 找到用户的排名
+    const userIndex = scores.findIndex(user => user.id === userId)
+    
+    if (userIndex === -1) return null
+    
+    // 返回用户排名和相邻的用户
+    return {
+      rank: userIndex + 1,
+      total: scores.length,
+      // 获取前一名
+      previous: userIndex > 0 ? userIndex - 1 : null,
+      // 获取后一名
+      next: userIndex < scores.length - 1 ? userIndex + 1 : null
+    }
+  } catch (e) {
+    console.error('获取用户排名时发生错误:', e);
+    return null;
   }
 } 

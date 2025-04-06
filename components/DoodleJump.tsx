@@ -608,9 +608,12 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
   // 在gameState.gameOver监听中添加提交分数功能
   useEffect(() => {
     // 当游戏结束时，如果用户已登录，提交分数
+    let isSubmitting = false; // 防止重复提交的锁
+    
     const handleGameOver = async () => {
-      if (gameState.gameOver && isAuthenticated && user) {
-        // 提交用户分数
+      if (gameState.gameOver && isAuthenticated && user && !isSubmitting) {
+        // 设置锁避免重复提交
+        isSubmitting = true;
         console.log('游戏结束，准备提交分数');
         
         // 设置最大重试次数
@@ -620,6 +623,8 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
         
         while (retryCount < maxRetries && !success) {
           try {
+            console.log(`尝试提交分数 (${retryCount + 1}/${maxRetries})`);
+            
             const result = await submitScore({
               id: user.id,
               name: user.name,
@@ -633,6 +638,11 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
               if (result.isNewRecord) {
                 setIsNewRecord(true);
                 console.log('创造了新纪录!');
+                
+                // 如果是新纪录，延迟1秒后显示排行榜
+                setTimeout(() => {
+                  setShowLeaderboard(true);
+                }, 1000);
               }
               success = true;
             } else {
@@ -643,8 +653,10 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
             retryCount++;
             
             if (retryCount < maxRetries) {
-              // 等待一段时间后重试
-              await new Promise(resolve => setTimeout(resolve, 1000));
+              // 指数退避策略 - 每次重试等待时间增加
+              const delay = 1000 * Math.pow(2, retryCount - 1);
+              console.log(`等待 ${delay}ms 后重试...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
             }
           }
         }
@@ -652,15 +664,27 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
         // 如果所有尝试都失败了
         if (!success) {
           console.error('所有重试都失败，无法提交分数');
+          // 可以选择显示失败通知
+          displayNotification('无法提交分数，请稍后再试');
         }
-      } else if (gameState.gameOver) {
+        
+        // 完成后释放锁
+        isSubmitting = false;
+      } else if (gameState.gameOver && !isAuthenticated) {
         // 游戏结束但用户未登录
         console.log('游戏结束，但用户未登录，不提交分数');
-        // 可以选择显示提示，鼓励用户登录
+        // 显示提示，鼓励用户登录
+        displayNotification('登录后可以记录分数并查看排行榜!');
       }
     };
     
+    // 游戏结束时调用一次
     handleGameOver();
+    
+    // 清理函数
+    return () => {
+      isSubmitting = false;
+    };
   }, [gameState.gameOver, isAuthenticated, user, gameState.score]);
 
   // Render loading state or game canvas
