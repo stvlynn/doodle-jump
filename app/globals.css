@@ -313,3 +313,47 @@ body {
   color: white;
   padding-bottom: 1px;
 }
+
+/* Konami Code Flash Animation */
+@keyframes konamiFlash {
+  0% {
+    filter: brightness(1);
+  }
+  25% {
+    filter: brightness(2);
+  }
+  50% {
+    filter: brightness(1);
+  }
+  75% {
+    filter: brightness(2);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+
+.konami-flash {
+  animation: konamiFlash 0.5s ease-in-out;
+}
+
+/* 通知气泡样式 */
+.notification {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-family: 'DOTMATRIX', monospace;
+  font-size: 12px;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.notification.show {
+  opacity: 1;
+}

@@ -20,7 +20,7 @@ export interface PowerUp {
   y: number
   width: number
   height: number
-  type: 'rocket'
+  type: 'rocket' | 'balloon'
   active: boolean
 }
 
@@ -32,7 +32,7 @@ export interface GameState {
     width: number
     height: number
     isJumping: boolean
-    activePowerup: null | 'rocket'
+    activePowerup: null | 'rocket' | 'balloon'
     powerupTimer: number
   }
   platforms: Platform[]
@@ -42,6 +42,9 @@ export interface GameState {
   gameStarted: boolean
   difficulty: number // Game difficulty value
   lastRocketTime: number // Last rocket generation time
+  lastBalloonTime: number // Last balloon generation time
+  konamiCodeActivated: boolean // Whether Konami Code has been activated
+  konamiCodeUsed: boolean // Whether Konami Code has already been used in this game
 }
 
 interface GameContextType {
@@ -57,6 +60,9 @@ interface GameContextType {
   toggleGravityControl: (enabled: boolean) => void
   useGravityControl: boolean
 }
+
+// Konami Code sequence
+const KONAMI_CODE = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowLeft', 'ArrowRight', 'ArrowRight', 'b', 'a', 'b', 'a'];
 
 const GameContext = createContext<GameContextType | null>(null)
 
@@ -101,13 +107,17 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     gameOver: false,
     gameStarted: false,
     difficulty: 0, // Initial difficulty is 0
-    lastRocketTime: 0 // Initial last rocket generation time
+    lastRocketTime: 0, // Initial last rocket generation time
+    lastBalloonTime: 0, // Initial last balloon generation time
+    konamiCodeActivated: false, // Konami Code not activated initially
+    konamiCodeUsed: false // Konami Code not used in this game yet
   }
 
   const [gameState, setGameState] = useState<GameState>(initialGameState)
   const [movingDirection, setMovingDirection] = useState<'left' | 'right' | null>(null)
   const [isPaused, setIsPaused] = useState(false);
   const [useGravityControl, setUseGravityControl] = useState(false);
+  const [konamiCodeSequence, setKonamiCodeSequence] = useState<string[]>([]);
 
   // Calculate current difficulty based on score
   const calculateDifficulty = (score: number): number => {
@@ -206,12 +216,19 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }
 
   // Try to create power-ups - using power-up probability and cooldown from difficulty manager
-  const tryCreatePowerup = (difficulty: number, currentTime: number, lastRocketTime: number): { powerup: PowerUp | null, newLastRocketTime: number } => {
+  const tryCreatePowerup = (difficulty: number, currentTime: number, lastRocketTime: number, lastBalloonTime: number): { 
+    powerup: PowerUp | null, 
+    newLastRocketTime: number,
+    newLastBalloonTime: number 
+  } => {
     const config = DifficultyManager.getPowerUpConfig(difficulty);
-    const { rocketChance, rocketCooldown } = config;
+    const { rocketChance, rocketCooldown, balloonChance, balloonCooldown } = config;
     
     // Check rocket cooldown time
     const rocketOnCooldown = currentTime - lastRocketTime < rocketCooldown;
+    
+    // Check balloon cooldown time
+    const balloonOnCooldown = currentTime - lastBalloonTime < balloonCooldown;
     
     const rand = Math.random() * 100;
     
@@ -227,27 +244,53 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           type: 'rocket',
           active: true
         },
-        newLastRocketTime: currentTime
+        newLastRocketTime: currentTime,
+        newLastBalloonTime: lastBalloonTime
       }
     }
     
-    return { powerup: null, newLastRocketTime: lastRocketTime };
+    // Try to generate a balloon if rocket wasn't generated and balloon is not on cooldown
+    if (!balloonOnCooldown && rand < balloonChance) {
+      return {
+        powerup: {
+          id: Date.now() + Math.random(),
+          x: Math.random() * (GAME_WIDTH - 20),
+          y: -30, // Start above the screen
+          width: 20,
+          height: 30,
+          type: 'balloon',
+          active: true
+        },
+        newLastRocketTime: lastRocketTime,
+        newLastBalloonTime: currentTime
+      }
+    }
+    
+    return { 
+      powerup: null, 
+      newLastRocketTime: lastRocketTime,
+      newLastBalloonTime: lastBalloonTime 
+    };
   }
 
   const startGame = () => {
-    setGameState({
-      ...initialGameState,
-      platforms: createInitialPlatforms(),
-      gameStarted: true
-    })
+    if (!gameState.gameStarted) {
+      setGameState({
+        ...initialGameState,
+        platforms: createInitialPlatforms(),
+        gameStarted: true
+      })
+    }
   }
 
   const restartGame = () => {
-    setGameState({
-      ...initialGameState,
-      platforms: createInitialPlatforms(),
-      gameStarted: true
-    })
+    if (gameState.gameOver) {
+      setGameState({
+        ...initialGameState,
+        platforms: createInitialPlatforms(),
+        gameStarted: true
+      })
+    }
   }
 
   const movePlayerLeft = () => {
@@ -289,6 +332,9 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         // Update difficulty value - based on current score
         const difficulty = calculateDifficulty(prevState.score);
+        
+        // Get power-up configurations for later use
+        const powerUpConfig = DifficultyManager.getPowerUpConfig(difficulty);
 
         // Update player position
         let newX = prevState.player.x
@@ -308,33 +354,61 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Update player velocity and position
         let newY = prevState.player.y
         let newVelocityY = prevState.player.velocityY
-
-        // Handle rocket power-up
-        if (prevState.player.activePowerup === 'rocket') {
-          newVelocityY = ROCKET_JUMP_FORCE
-          
-          // Reduce rocket timer
-          let newPowerupTimer = prevState.player.powerupTimer - 1
-          let activePowerup = prevState.player.activePowerup
-          
-          if (newPowerupTimer <= 0) {
-            activePowerup = null as any // Type assertion to fix type error
+        
+        // Check if we need to activate Konami Code rocket effect
+        let newActivePowerup = prevState.player.activePowerup;
+        let newPowerupTimer = prevState.player.powerupTimer;
+        let newKonamiCodeActivated = prevState.konamiCodeActivated;
+        let newKonamiCodeUsed = prevState.konamiCodeUsed;
+        let newPowerups = [...prevState.powerups];
+        let lastRocketTime = prevState.lastRocketTime;
+        let lastBalloonTime = prevState.lastBalloonTime;
+        
+        // If Konami Code is newly activated and hasn't been used yet, give player rocket power
+        if (newKonamiCodeActivated && !newKonamiCodeUsed && !newActivePowerup) {
+          newActivePowerup = 'rocket';
+          newPowerupTimer = powerUpConfig.rocketDuration;
+          newKonamiCodeUsed = true; // Mark as used for this game
+        }
+        
+        // Handle active power-ups
+        if (prevState.player.activePowerup || newActivePowerup) {
+          // Determine force based on power-up type
+          if (newActivePowerup === 'rocket' || prevState.player.activePowerup === 'rocket') {
+            newVelocityY = powerUpConfig.rocketForce;
+          } else if (newActivePowerup === 'balloon' || prevState.player.activePowerup === 'balloon') {
+            newVelocityY = powerUpConfig.balloonForce;
           }
           
-          // Update player position (rocket effect)
+          // Reduce power-up timer
+          if (newPowerupTimer > 0) {
+            newPowerupTimer -= 1;
+          } else if (prevState.player.powerupTimer > 0) {
+            newPowerupTimer = prevState.player.powerupTimer - 1;
+          }
+          
+          if (newPowerupTimer <= 0) {
+            newActivePowerup = null;
+            
+            // If this was a Konami Code rocket, deactivate Konami mode when it ends
+            if (newKonamiCodeActivated && newKonamiCodeUsed) {
+              newKonamiCodeActivated = false;
+            }
+          }
+          
+          // Update player position (power-up effect)
           newY += newVelocityY
           
-          // Move camera and generate new platforms during rocket power
+          // Move camera and generate new platforms during power-up
           let newPlatforms: Platform[] = [...prevState.platforms]
-          let newPowerups = [...prevState.powerups]
           let newScore = prevState.score
-          let lastRocketTime = prevState.lastRocketTime
           
-          // Calculate how much to move down
-          const delta = Math.min(20, GAME_HEIGHT / 2 - newY) // Limit max delta per frame
+          // Calculate how much to move down - limit based on power-up type
+          const maxDelta = newActivePowerup === 'rocket' ? 20 : 12; // Balloon has slower ascent
+          const delta = Math.min(maxDelta, GAME_HEIGHT / 2 - newY) // Limit max delta per frame
           
           if (delta > 0) {
-            newY += delta // Adjust player position to maintain rocket flight
+            newY += delta // Adjust player position to maintain flight
             
             // Move platforms down
             newPlatforms = newPlatforms.map(platform => ({
@@ -364,15 +438,15 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               
               // Use spacing configuration to determine new platform Y coordinate
               const spacing = Math.random() * (spacingConfig.maxSpacing - spacingConfig.minSpacing) + spacingConfig.minSpacing;
-              const newY = highestPlatformY - spacing;
+              const newPlatformY = highestPlatformY - spacing;
               
               // Random X coordinate
-              const newX = Math.random() * (GAME_WIDTH - PLATFORM_WIDTH);
+              const newPlatformX = Math.random() * (GAME_WIDTH - PLATFORM_WIDTH);
               
               const platform = createPlatform(
                 Date.now() + Math.random(),
-                newX,
-                newY,
+                newPlatformX,
+                newPlatformY,
                 difficulty,
                 lastPlatformType
               );
@@ -382,11 +456,14 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             
             // Try to create new power-ups
-            const { powerup, newLastRocketTime } = tryCreatePowerup(difficulty, frameCount, lastRocketTime);
+            const result = tryCreatePowerup(difficulty, frameCount, lastRocketTime, lastBalloonTime);
+            const powerup = result.powerup;
+            lastRocketTime = result.newLastRocketTime;
+            lastBalloonTime = result.newLastBalloonTime;
+              
             if (powerup) {
-              powerup.y = -30 - Math.random() * 50; // Random height (above the screen)
+              powerup.y = -30 - Math.random() * 20; // Random height (above the screen)
               newPowerups.push(powerup);
-              lastRocketTime = newLastRocketTime;
             }
             
             // Update score based on player jump height
@@ -400,14 +477,16 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               x: newX,
               y: newY,
               velocityY: newVelocityY,
-              activePowerup,
+              activePowerup: newActivePowerup,
               powerupTimer: newPowerupTimer
             },
             platforms: newPlatforms,
             powerups: newPowerups,
             score: newScore,
-            difficulty,
-            lastRocketTime
+            lastRocketTime,
+            lastBalloonTime,
+            konamiCodeActivated: newKonamiCodeActivated,
+            konamiCodeUsed: newKonamiCodeUsed
           }
         }
 
@@ -469,25 +548,24 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         // Check for collision with power-ups
-        let newPowerups = [...prevState.powerups]
-        let activePowerup = prevState.player.activePowerup
-        let powerupTimer = prevState.player.powerupTimer
-        
         newPowerups = newPowerups.filter(powerup => {
-          if (
-            powerup.active &&
-            newX + prevState.player.width > powerup.x &&
+          const collision = 
             newX < powerup.x + powerup.width &&
-            newY + prevState.player.height > powerup.y &&
-            newY < powerup.y + powerup.height
-          ) {
+            newX + prevState.player.width > powerup.x &&
+            newY < powerup.y + powerup.height &&
+            newY + prevState.player.height > powerup.y
+          
+          if (collision) {
             // Collect power-up
             if (powerup.type === 'rocket') {
-              activePowerup = 'rocket' as any
-              powerupTimer = ROCKET_DURATION
-              newVelocityY = ROCKET_JUMP_FORCE
+              newActivePowerup = 'rocket' as any
+              newPowerupTimer = powerUpConfig.rocketDuration
+              return false
+            } else if (powerup.type === 'balloon') {
+              newActivePowerup = 'balloon' as any
+              newPowerupTimer = powerUpConfig.balloonDuration
+              return false
             }
-            return false
           }
           return true
         })
@@ -529,7 +607,6 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         // If player reaches half screen height, generate new platforms and move camera
         let newScore = prevState.score;
-        let lastRocketTime = prevState.lastRocketTime;
         
         if (newY < GAME_HEIGHT / 2 && newVelocityY < 0) {
           // Calculate how much to move down
@@ -564,15 +641,15 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             
             // Use spacing configuration to determine new platform Y coordinate
             const spacing = Math.random() * (spacingConfig.maxSpacing - spacingConfig.minSpacing) + spacingConfig.minSpacing;
-            const newY = highestPlatformY - spacing;
+            const newPlatformY = highestPlatformY - spacing;
             
             // Random X coordinate
-            const newX = Math.random() * (GAME_WIDTH - PLATFORM_WIDTH);
+            const newPlatformX = Math.random() * (GAME_WIDTH - PLATFORM_WIDTH);
             
             const platform = createPlatform(
               Date.now() + Math.random(),
-              newX,
-              newY,
+              newPlatformX,
+              newPlatformY,
               difficulty,
               lastPlatformType
             );
@@ -582,11 +659,15 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
           
           // Try to create new power-ups
-          const { powerup, newLastRocketTime } = tryCreatePowerup(difficulty, frameCount, lastRocketTime);
+          const result = tryCreatePowerup(difficulty, frameCount, lastRocketTime, lastBalloonTime);
+          const powerup = result.powerup;
+          lastRocketTime = result.newLastRocketTime;
+          lastBalloonTime = result.newLastBalloonTime;
+            
           if (powerup) {
-            powerup.y = -30 - Math.random() * 50; // Random height (above the screen)
+            // Adjust position to be slightly more visible
+            powerup.y = -30 - Math.random() * 20; // Random height (above the screen, but closer)
             newPowerups.push(powerup);
-            lastRocketTime = newLastRocketTime;
           }
           
           // Update score based on player jump height
@@ -604,18 +685,21 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             y: newY,
             velocityY: newVelocityY,
             isJumping,
-            activePowerup,
-            powerupTimer
+            activePowerup: newActivePowerup,
+            powerupTimer: newPowerupTimer
           },
           platforms: newPlatforms,
           powerups: newPowerups,
           score: newScore,
           gameOver,
           difficulty,
-          lastRocketTime
+          lastRocketTime,
+          lastBalloonTime,
+          konamiCodeActivated: newKonamiCodeActivated,
+          konamiCodeUsed: newKonamiCodeUsed
         }
       })
-    }, 16) // ~60 FPS
+    }, 1000 / 60) // 60 FPS
 
     return () => clearInterval(gameLoop)
   }, [gameState.gameStarted, gameState.gameOver, movingDirection, isPaused])
@@ -630,6 +714,54 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } else if (e.key === 'ArrowRight') {
         movePlayerRight()
       }
+      
+      // Track Konami Code sequence
+      setKonamiCodeSequence(prevSequence => {
+        const newSequence = [...prevSequence, e.key];
+        
+        // Only keep the most recent keystrokes that could potentially form the code
+        if (newSequence.length > KONAMI_CODE.length) {
+          newSequence.shift();
+        }
+        
+        // Check if Konami Code is entered
+        if (newSequence.length === KONAMI_CODE.length) {
+          let isKonamiCode = true;
+          
+          for (let i = 0; i < KONAMI_CODE.length; i++) {
+            if (newSequence[i] !== KONAMI_CODE[i]) {
+              isKonamiCode = false;
+              break;
+            }
+          }
+          
+          // Only activate if the code matches and hasn't been used in this game yet
+          if (isKonamiCode && !gameState.konamiCodeActivated && !gameState.konamiCodeUsed) {
+            // Activate Konami Code effect - instant rocket mode
+            setGameState(prevState => ({
+              ...prevState,
+              konamiCodeActivated: true
+            }));
+            
+            // Visual/audio feedback that code was activated
+            if (typeof window !== 'undefined') {
+              // Flash screen
+              const gameElement = document.querySelector('.screen-inner');
+              if (gameElement) {
+                gameElement.classList.add('konami-flash');
+                setTimeout(() => {
+                  gameElement.classList.remove('konami-flash');
+                }, 500);
+              }
+              
+              // Show message
+              console.log('KONAMI CODE ACTIVATED! Instant rocket power!');
+            }
+          }
+        }
+        
+        return newSequence;
+      });
     }
     
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -645,7 +777,7 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [gameState.gameStarted])
+  }, [gameState.gameStarted, gameState.konamiCodeActivated])
 
   // Handle device orientation
   useEffect(() => {

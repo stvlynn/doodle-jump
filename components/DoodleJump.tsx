@@ -32,6 +32,8 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
   const [imagesLoaded, setImagesLoaded] = useState(false)
   const [fontLoaded, setFontLoaded] = useState(false)
   const imagesRef = useRef<Record<string, HTMLImageElement>>({})
+  const [showNotification, setShowNotification] = useState(false)
+  const [notificationMessage, setNotificationMessage] = useState('')
   
   // Loading font
   useEffect(() => {
@@ -60,6 +62,7 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
       '/assets/player-jump.svg',
       '/assets/player-fall.svg',
       '/assets/player-rocket.svg',
+      '/assets/player-balloon.svg',
       '/assets/platform-normal.svg',
       '/assets/platform-moving.svg',
       '/assets/platform-breakable.svg',
@@ -67,6 +70,7 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
       '/assets/platform-spring.svg',
       '/assets/powerup-spring.svg',
       '/assets/powerup-rocket.svg',
+      '/assets/powerup-balloon.svg',
       '/assets/clouds.svg'
     ]
     
@@ -91,22 +95,56 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
     imagesRef.current = images
   }, [])
   
+  // Watch for Konami Code activation
+  useEffect(() => {
+    if (gameState.konamiCodeActivated) {
+      // Show notification
+      displayNotification('INSTANT ROCKET MODE ACTIVATED!');
+    }
+  }, [gameState.konamiCodeActivated]);
+  
+  // Display notification function
+  const displayNotification = (message: string) => {
+    setNotificationMessage(message);
+    setShowNotification(true);
+    
+    // Hide notification after 3 seconds
+    setTimeout(() => {
+      setShowNotification(false);
+    }, 3000);
+  };
+  
   // Handle button press event - exported as component property
   const handleButtonDown = (direction: string) => {
     if (onButtonDown) {
       onButtonDown(direction)
     }
     
-    if (direction === 'left') {
-      movePlayerLeft()
-    } else if (direction === 'right') {
-      movePlayerRight()
-    } else if (direction === 'start') {
+    // 处理A键和Start键的逻辑
+    if (direction === 'a') {
+      // 游戏进行中时，A键不触发开始/重新开始游戏功能
+      if (gameState && gameState.gameStarted && !gameState.gameOver) {
+        // 不执行任何开始游戏动作，但继续向上传递事件以支持Konami Code
+        return;
+      }
+      
+      // 仅在主屏或游戏结束时允许A键开始/重新开始游戏
       if (gameState.gameOver) {
         restartGame()
       } else if (!gameState.gameStarted) {
         startGame()
       }
+    } else if (direction === 'start') {
+      // Start键正常处理开始/重新开始游戏
+      if (gameState.gameOver) {
+        restartGame()
+      } else if (!gameState.gameStarted) {
+        startGame()
+      }
+    } else if (direction === 'left') {
+      movePlayerLeft()
+    } else if (direction === 'right') {
+      movePlayerRight()
     }
   }
   
@@ -130,7 +168,7 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
   
   // Keyboard key handler
   useEffect(() => {
-    if (!gameState.gameStarted && gameState.gameOver) return;
+    if (!gameState.gameStarted && !gameState.gameOver) return;
     
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') {
@@ -143,6 +181,22 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
         handleButtonDown('down')
       } else if (e.key === 'Enter') {
         handleButtonDown('start')
+      } else if (e.key === 'a') {
+        // 游戏进行中时，A键应该只能用于Konami Code检测，不能触发游戏重启
+        if (gameState && gameState.gameStarted && !gameState.gameOver) {
+          // 只发出按键事件，但不触发游戏控制功能
+          if (onButtonDown) {
+            onButtonDown('a')
+          }
+        } else {
+          // 游戏未开始或已结束时，正常处理A键
+          handleButtonDown('a')
+        }
+      } else if (e.key === 'b') {
+        // 正常处理B键
+        if (onButtonDown) {
+          onButtonDown('b')
+        }
       }
     }
     
@@ -159,7 +213,7 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [gameState.gameStarted, gameState.gameOver, movePlayerLeft, movePlayerRight, stopMoving, restartGame, startGame])
+  }, [gameState.gameStarted, gameState.gameOver, movePlayerLeft, movePlayerRight, stopMoving, restartGame, startGame, onButtonDown])
 
   // Set up touch controls
   useEffect(() => {
@@ -262,6 +316,25 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
     ctx.fillRect(indicatorX, indicatorY, indicatorWidth, indicatorHeight)
     ctx.fillStyle = `rgba(${100 + gameState.difficulty * 15}, ${200 - gameState.difficulty * 10}, 100, 0.7)`
     ctx.fillRect(indicatorX, indicatorY, (indicatorWidth / 10) * gameState.difficulty, indicatorHeight)
+    
+    // Draw Konami Code indicator if active
+    if (gameState.konamiCodeActivated) {
+      const rocketIcon = imagesRef.current['powerup-rocket'];
+      if (rocketIcon) {
+        ctx.drawImage(
+          rocketIcon,
+          gameWidth * 0.94 - 15,
+          gameHeight * 0.03,
+          15,
+          30
+        );
+      }
+      
+      ctx.fillStyle = '#0f380f' // Dark Game Boy green
+      ctx.font = `${gameWidth * 0.03}px 'DOTMATRIX', Arial`
+      ctx.textAlign = 'right'
+      ctx.fillText('KONAMI', gameWidth * 0.93, gameHeight * 0.04)
+    }
 
     // Draw platforms
     gameState.platforms.forEach((platform: Platform) => {
@@ -323,12 +396,11 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
     ctx.shadowOffsetX = 2 * scaleX
     ctx.shadowOffsetY = 2 * scaleY
     
-    // Select appropriate SVG image based on player state
+    // 选择基础玩家图像
     let playerImageKey: string
     
-    if (gameState.player.activePowerup === 'rocket') {
-      playerImageKey = 'player-rocket'
-    } else if (gameState.player.velocityY < 0) {
+    // 选择基础玩家状态（而不是带道具的状态）
+    if (gameState.player.velocityY < 0) {
       playerImageKey = 'player-jump'
     } else if (gameState.player.velocityY > 5) {
       playerImageKey = 'player-fall'
@@ -336,14 +408,59 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
       playerImageKey = 'player'
     }
     
+    // 绘制玩家图像
     const playerImage = imagesRef.current[playerImageKey]
     if (playerImage) {
-      if (playerImageKey === 'player-rocket') {
-        // Rocket state needs special handling, SVG height is 70, normal character is 40
-        // Keep width unchanged, adjust height and position to keep player part in consistent position
-        ctx.drawImage(playerImage, playerX, playerY, playerWidth, playerHeight * 1.75);
-      } else {
-        ctx.drawImage(playerImage, playerX, playerY, playerWidth, playerHeight);
+      // 绘制基础玩家图像
+      ctx.drawImage(playerImage, playerX, playerY, playerWidth, playerHeight);
+      
+      // 如果玩家正在使用道具，绘制道具图标
+      if (gameState.player.activePowerup) {
+        if (gameState.player.activePowerup === 'rocket') {
+          // 获取火箭图像
+          const rocketImage = imagesRef.current['powerup-rocket'];
+          if (rocketImage) {
+            // 只取火箭图像的下半部分并放在角色下方
+            const rocketWidth = playerWidth * 0.8;
+            const rocketHeight = playerHeight * 0.8;
+            const rocketX = playerX + (playerWidth - rocketWidth) * 0.6;
+            const rocketY = playerY + playerHeight - rocketHeight * 0.3;
+            
+            // 绘制火箭图像（只绘制下半部分）
+            ctx.drawImage(
+              rocketImage, 
+              0, rocketImage.height / 2, // 源图像的坐标和尺寸，只取下半部分
+              rocketImage.width, rocketImage.height / 2,
+              rocketX, rocketY, // 目标位置
+              rocketWidth, rocketHeight / 2
+            );
+          }
+        } else if (gameState.player.activePowerup === 'balloon') {
+          // 获取气球图像
+          const balloonImage = imagesRef.current['powerup-balloon'];
+          if (balloonImage) {
+            // 将气球图像放在角色上方
+            const balloonWidth = playerWidth * 0.8;
+            const balloonHeight = playerHeight * 0.8;
+            const balloonX = playerX + (playerWidth - balloonWidth) / 2;
+            const balloonY = playerY - balloonHeight * 0.8;
+            
+            // 绘制气球图像
+            ctx.drawImage(
+              balloonImage,
+              balloonX, balloonY,
+              balloonWidth, balloonHeight
+            );
+            
+            // 绘制一条线连接气球和角色
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = '#333';
+            ctx.beginPath();
+            ctx.moveTo(balloonX + balloonWidth / 2, balloonY + balloonHeight);
+            ctx.lineTo(playerX + playerWidth / 2, playerY);
+            ctx.stroke();
+          }
+        }
       }
     }
     
@@ -372,11 +489,15 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
       let width: number = 0
       let height: number = 0
       
-      // PowerUp type is only 'rocket' according to the interface
+      // PowerUp type is only 'rocket' or 'balloon' according to the interface
       if (powerup.type === 'rocket') {
         powerupImageKey = 'powerup-rocket'
         width = 20 * scaleX
         height = 40 * scaleY
+      } else if (powerup.type === 'balloon') {
+        powerupImageKey = 'powerup-balloon'
+        width = 20 * scaleX
+        height = 30 * scaleY
       }
       
       const powerupImage = imagesRef.current[powerupImageKey]
@@ -432,14 +553,21 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
   }
 
   return (
-    <canvas 
-      ref={canvasRef} 
-      className="w-full h-full"
-      onClick={() => {
-        if (!gameState.gameStarted) {
-          startGame();
-        }
-      }}
-    />
+    <div className="relative w-full h-full">
+      {/* Notification element */}
+      <div className={`notification ${showNotification ? 'show' : ''}`}>
+        {notificationMessage}
+      </div>
+      
+      <canvas 
+        ref={canvasRef} 
+        className="w-full h-full"
+        onClick={() => {
+          if (!gameState.gameStarted) {
+            startGame();
+          }
+        }}
+      />
+    </div>
   )
 }) 

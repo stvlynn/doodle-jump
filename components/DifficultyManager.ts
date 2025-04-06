@@ -15,6 +15,12 @@ export class DifficultyManager {
   private static readonly SCORE_PER_LEVEL = 1000;
   private static readonly DIFFICULTY_STEP = 0.1;
 
+  // Power-up constants
+  private static readonly BALLOON_FORCE = -6; // Less powerful than rocket but more than regular jump
+  private static readonly BALLOON_DURATION = 100; // Shorter duration than rocket (about 1.7 seconds)
+  private static readonly ROCKET_FORCE = -20; // Strong upward force
+  private static readonly ROCKET_DURATION = 150; // About 2.5 seconds
+
   /**
    * Calculate current difficulty value based on score
    * @param score Current game score
@@ -68,13 +74,25 @@ export class DifficultyManager {
     // Rocket probability - increases base chance with difficulty, capped at 8%
     const rocketChance = Math.min(2.0 + (difficulty * 0.3), 8.0);
     
+    // Balloon probability - higher than rocket, increases with difficulty, capped at 12%
+    const balloonChance = Math.min(4.0 + (difficulty * 0.4), 12.0);
+    
     // Rocket cooldown time (in frames) - reduces cooldown time
     // Longer cooldown at lower difficulty, shorter at higher difficulty
     const rocketCooldown = Math.max(450 - (difficulty * 20), 200); // About 7.5-3.3 seconds (60 frames/second)
     
+    // Balloon cooldown time - shorter than rocket
+    const balloonCooldown = Math.max(300 - (difficulty * 15), 150); // About 5-2.5 seconds
+    
     return {
       rocketChance,
-      rocketCooldown
+      rocketCooldown,
+      balloonChance,
+      balloonCooldown,
+      balloonForce: this.BALLOON_FORCE,
+      balloonDuration: this.BALLOON_DURATION,
+      rocketForce: this.ROCKET_FORCE,
+      rocketDuration: this.ROCKET_DURATION
     };
   }
 

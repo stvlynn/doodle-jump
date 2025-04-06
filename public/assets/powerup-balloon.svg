@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="40" height="60" viewBox="0 0 40 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Balloon -->
+  <ellipse cx="20" cy="20" rx="18" ry="20" fill="#FFA07A"/>
+  <path d="M18 37C18 37 19 42 20 42C21 42 22 37 22 37" stroke="#A0522D" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- Balloon string -->
+  <path d="M20 42C20 42 19 48 20 54C20.5 57 19 58 20 60" stroke="#A0522D" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- Balloon highlights -->
+  <ellipse cx="14" cy="15" rx="4" ry="5" fill="#FFB6C1" fill-opacity="0.6"/>
+  
+  <!-- Balloon details -->
+  <path d="M8 20C8 20 10 25 15 24" stroke="#CD5C5C" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M30 18C30 18 28 22 24 21" stroke="#CD5C5C" stroke-width="1.5" stroke-linecap="round"/>
+</svg> 
