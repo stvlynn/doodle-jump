@@ -113,12 +113,11 @@ export const submitScore = async (userData: {
     if (!existingUser || userData.score > existingScore) {
       console.log('提交新纪录到数据库:', userRecord);
       
-      // 使用Supabase的原生upsert功能 - 正确语法
-      const { error: upsertError } = await supabase
+      // 使用Supabase的upsert方法并添加select获取更新后的数据
+      const { data, error: upsertError } = await supabase
         .from('users')
-        .upsert(userRecord, { 
-          onConflict: 'id' 
-        })
+        .upsert(userRecord)
+        .select()
       
       if (upsertError) {
         console.error('提交分数失败:', upsertError);
@@ -129,7 +128,7 @@ export const submitScore = async (userData: {
         }
       }
       
-      console.log('新纪录提交成功!');
+      console.log('新纪录提交成功!', data);
       return {
         success: true,
         isNewRecord: true,
