@@ -76,22 +76,29 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
   
   // Loading font
   useEffect(() => {
-    // Using FontFace API to load DOTMATRIX font
-    const fontFace = new FontFace('DOTMATRIX', 'url(/assets/fonts/DOTMATRI.TTF)', {
-      style: 'normal',
-      weight: 'normal'
-    });
-    
-    // Load and add font to document
-    fontFace.load().then(font => {
-      document.fonts.add(font);
+    // 使用更安全的字体加载方式，处理潜在的格式错误
+    try {
+      // Using FontFace API to load DOTMATRIX font
+      const fontFace = new FontFace('DOTMATRIX', 'url(/assets/fonts/DOTMATRI.TTF)', {
+        style: 'normal',
+        weight: 'normal'
+      });
+      
+      // Load and add font to document
+      fontFace.load().then(font => {
+        document.fonts.add(font);
+        setFontLoaded(true);
+        console.log('DOTMATRIX font loaded!');
+      }).catch(err => {
+        console.error('Font loading failed:', err);
+        // 即使加载失败，也设置为true以允许显示继续
+        setFontLoaded(true);
+      });
+    } catch (error) {
+      console.error('Font loading error:', error);
+      // 出错时也设置为加载完成，降级使用系统字体
       setFontLoaded(true);
-      console.log('DOTMATRIX font loaded!');
-    }).catch(err => {
-      console.error('Font loading failed:', err);
-      // Even if loading fails, set to true to allow display to continue
-      setFontLoaded(true);
-    });
+    }
   }, []);
   
   // Preload all game images
