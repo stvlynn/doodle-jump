@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getCookie, clearAuthCookies } from './cookies';
 
 // 用户信息接口
 export interface TwitterUser {
@@ -27,16 +28,7 @@ const AUTH_STORAGE_KEY = 'twitter_auth';
 
 // Twitter Auth URL - 更新为twi.am登录URL
 const TWITTER_AUTH_URL = 'https://twi.am/login?returnUrl=https://doodle.twi.am';
-
-// 从cookie中获取值
-const getCookie = (name: string): string | null => {
-  if (typeof document === 'undefined') return null;
-  
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
-  return null;
-};
+const TWITTER_LOGOUT_URL = 'https://twi.am/login?returnUrl=https://doodle.twi.am%3Flogout%3Dcompleted&logout=true';
 
 // 保存认证状态到本地存储
 export const saveAuthState = (state: AuthState) => {
@@ -64,6 +56,8 @@ export const getAuthState = (): AuthState => {
 export const clearAuthState = () => {
   if (typeof window !== 'undefined') {
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    // 同时清除cookies
+    clearAuthCookies();
   }
 };
 
@@ -74,9 +68,15 @@ export const loginWithTwitter = () => {
 };
 
 // 登出
-export const logout = () => {
+export const logout = (redirect = true) => {
   clearAuthState();
-  window.location.reload();
+  
+  // 如果需要重定向到登出页面
+  if (redirect) {
+    window.location.href = TWITTER_LOGOUT_URL;
+  } else {
+    window.location.reload();
+  }
 };
 
 // 从cookie中获取用户信息

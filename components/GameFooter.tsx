@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import Link from 'next/link';
+import LogoutConfirmDialog from './LogoutConfirmDialog';
 
 // X (Twitter) 图标组件
 const XIcon = () => (
@@ -14,13 +16,24 @@ const XIcon = () => (
 );
 
 export default function GameFooter() {
-  const { isAuthenticated, user, login, logout } = useAuth();
+  const { isAuthenticated, user, login } = useAuth();
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+
+  const handleAuthButtonClick = () => {
+    if (isAuthenticated) {
+      // 如果用户已登录，则显示登出确认对话框
+      setShowLogoutDialog(true);
+    } else {
+      // 未登录时，直接登录
+      login();
+    }
+  };
 
   return (
     <div className="game-footer">
       <button 
         className="twitter-login" 
-        onClick={isAuthenticated ? logout : login}
+        onClick={handleAuthButtonClick}
       >
         <XIcon />
         {isAuthenticated 
@@ -32,6 +45,12 @@ export default function GameFooter() {
       <Link href="https://twi.am" className="more-games" target="_blank">
         More Games
       </Link>
+      
+      {/* 登出确认对话框 */}
+      <LogoutConfirmDialog
+        open={showLogoutDialog}
+        onOpenChange={setShowLogoutDialog}
+      />
     </div>
   );
 } 
