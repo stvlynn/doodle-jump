@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react'
 import { useGame, Platform, PowerUp } from './GameProvider'
+import { useAuth } from '@/lib/auth'
 
 // Modern color scheme
 const COLORS = {
@@ -34,6 +35,35 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
   const imagesRef = useRef<Record<string, HTMLImageElement>>({})
   const [showNotification, setShowNotification] = useState(false)
   const [notificationMessage, setNotificationMessage] = useState('')
+  
+  // 添加 Twitter 认证状态
+  const { isAuthenticated, user } = useAuth();
+  const [userProfileImage, setUserProfileImage] = useState<HTMLImageElement | null>(null);
+
+  // 加载Twitter用户头像
+  useEffect(() => {
+    if (isAuthenticated && user?.profile_image_url) {
+      const img = new Image();
+      img.crossOrigin = "anonymous";  // 允许跨域加载图片
+      img.onload = () => {
+        setUserProfileImage(img);
+      };
+      img.onerror = (e) => {
+        console.error("Error loading profile image:", e);
+        setUserProfileImage(null);
+      };
+      
+      // 确保使用完整的URL
+      if (user.profile_image_url.startsWith('http')) {
+        img.src = user.profile_image_url;
+      } else {
+        // 如果是相对路径，添加基础URL
+        img.src = `https://twi.am${user.profile_image_url}`;
+      }
+    } else {
+      setUserProfileImage(null);
+    }
+  }, [isAuthenticated, user]);
   
   // Loading font
   useEffect(() => {
@@ -411,8 +441,41 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
     // 绘制玩家图像
     const playerImage = imagesRef.current[playerImageKey]
     if (playerImage) {
-      // 绘制基础玩家图像
-      ctx.drawImage(playerImage, playerX, playerY, playerWidth, playerHeight);
+      // 如果用户已登录且头像已加载，使用Twitter头像
+      if (isAuthenticated && userProfileImage) {
+        try {
+          // 创建圆形剪切路径
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(
+            playerX + playerWidth / 2, 
+            playerY + playerHeight / 2, 
+            playerWidth / 2, 
+            0, 
+            Math.PI * 2
+          );
+          ctx.closePath();
+          ctx.clip();
+          
+          // 绘制Twitter头像
+          ctx.drawImage(
+            userProfileImage, 
+            playerX, 
+            playerY, 
+            playerWidth, 
+            playerHeight
+          );
+          
+          ctx.restore();
+        } catch (e) {
+          console.error("Error drawing profile image:", e);
+          // 出错时回退到默认图像
+          ctx.drawImage(playerImage, playerX, playerY, playerWidth, playerHeight);
+        }
+      } else {
+        // 使用默认角色图像
+        ctx.drawImage(playerImage, playerX, playerY, playerWidth, playerHeight);
+      }
       
       // 如果玩家正在使用道具，绘制道具图标
       if (gameState.player.activePowerup) {
@@ -539,7 +602,7 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
       ctx.shadowOffsetX = 0
       ctx.shadowOffsetY = 0
     }
-  }, [gameState, movingDirection, imagesLoaded, fontLoaded])
+  }, [gameState, movingDirection, imagesLoaded, fontLoaded, isAuthenticated, userProfileImage])
 
   // Render loading state or game canvas
   if (!imagesLoaded || !fontLoaded) {

@@ -357,3 +357,57 @@ body {
 .notification.show {
   opacity: 1;
 }
+
+/* 游戏底部导航栏样式 */
+.game-footer {
+  margin-top: 20px;
+  padding: 10px 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+}
+
+.game-footer button,
+.game-footer a {
+  background-color: #333;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'DOTMATRIX', monospace;
+  transition: background-color 0.2s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-footer button:hover,
+.game-footer a:hover {
+  background-color: #444;
+}
+
+.game-footer .twitter-login {
+  background-color: #1da1f2;
+}
+
+.game-footer .twitter-login:hover {
+  background-color: #0c85d0;
+}
+
+.game-footer .more-games {
+  background-color: #0f380f;
+}
+
+.game-footer .more-games:hover {
+  background-color: #306230;
+}
+
+/* Twitter 图标样式 */
+.twitter-icon {
+  margin-right: 8px;
+  width: 20px;
+  height: 20px;
+}
