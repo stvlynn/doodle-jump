@@ -1,42 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { LeaderboardEntry } from '@/lib/leaderboard';
+import supabase from '@/lib/supabase';
 
-// Environment variables
-const R2_BUCKET_URL = process.env.R2_BUCKET_URL;
-
-// Leaderboard file name in R2
-const LEADERBOARD_FILE = 'leaderboard.json';
-
-// Fetch leaderboard data from R2
-async function fetchFromR2(): Promise<LeaderboardEntry[]> {
-  try {
-    if (!R2_BUCKET_URL) {
-      throw new Error('R2 bucket URL not configured');
-    }
-    
-    const response = await fetch(`${R2_BUCKET_URL}/${LEADERBOARD_FILE}`);
-    
-    if (response.status === 404) {
-      // If file doesn't exist yet, return empty array
-      return [];
-    }
-    
-    if (!response.ok) {
-      throw new Error(`R2 read failed: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    console.error('Failed to fetch from R2:', error);
-    // Return empty array as fallback
-    return [];
-  }
+// 用于类型安全的路由参数接口
+interface RouteParams {
+  params: {
+    userId: string;
+  };
 }
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: RouteParams
 ) {
   try {
     const { userId } = params;
@@ -48,43 +22,52 @@ export async function GET(
       );
     }
     
-    // Get leaderboard from R2
-    const leaderboard = await fetchFromR2();
+    // 使用Supabase查询排行榜数据
+    const { data: leaderboard, error } = await supabase
+      .from('leaderboard')
+      .select('*')
+      .order('doodleScore', { ascending: false });
     
-    // Sort by score (high to low)
-    const sortedLeaderboard = leaderboard.sort((a, b) => b.doodleScore - a.doodleScore);
+    if (error) {
+      throw new Error(`获取排行榜数据失败: ${error.message}`);
+    }
     
-    // Update ranks
+    // 排序为空时处理
+    const sortedLeaderboard = leaderboard || [];
+    
+    // 更新排名
     sortedLeaderboard.forEach((entry, index) => {
       entry.rank = index + 1;
     });
     
-    // Find user's rank
-    const userIndex = sortedLeaderboard.findIndex(entry => entry.userId === userId);
+    // 查找用户排名
+    const userIndex = sortedLeaderboard.findIndex(entry => entry.TwitterID === userId);
     
     if (userIndex === -1) {
       return NextResponse.json({
         success: true,
         rank: 0,
-        surroundingEntries: sortedLeaderboard.slice(0, 3) // Return top 3
+        surroundingEntries: sortedLeaderboard.slice(0, 3) // 返回前3名
       });
     }
     
     const userRank = userIndex + 1;
     
-    // Get surrounding entries
-    let startIndex = Math.max(0, userIndex - 1); // Previous rank
-    let endIndex = Math.min(sortedLeaderboard.length - 1, userIndex + 1); // Next rank
+    // 获取周围的条目
+    let startIndex = Math.max(0, userIndex - 1); // 前一个排名
+    let endIndex = Math.min(sortedLeaderboard.length - 1, userIndex + 1); // 后一个排名
     
-    // If user's rank is low, ensure top 3 are included
+    // 如果用户排名较低，确保包含前3名
     if (userRank > 3) {
       const surroundingEntries = [
-        ...sortedLeaderboard.slice(0, 3), // Top 3
-        ...sortedLeaderboard.slice(startIndex, endIndex + 1) // User and adjacent ranks
+        ...sortedLeaderboard.slice(0, 3), // 前3名
+        ...sortedLeaderboard.slice(startIndex, endIndex + 1) // 用户和相邻排名
       ];
       
-      // Remove duplicates
-      const uniqueEntries = Array.from(new Map(surroundingEntries.map(entry => [entry.userId, entry])).values());
+      // 移除重复项
+      const uniqueEntries = Array.from(
+        new Map(surroundingEntries.map(entry => [entry.TwitterID, entry])).values()
+      );
       
       return NextResponse.json({
         success: true,
@@ -92,7 +75,7 @@ export async function GET(
         surroundingEntries: uniqueEntries
       });
     } else {
-      // If user is already in top 3, return top 5
+      // 如果用户已经在前3名，返回前5名
       return NextResponse.json({
         success: true,
         rank: userRank,
@@ -100,9 +83,9 @@ export async function GET(
       });
     }
   } catch (error) {
-    console.error('Failed to get user rank:', error);
+    console.error('获取用户排名失败:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to get user rank' },
+      { success: false, error: '获取用户排名失败' },
       { status: 500 }
     );
   }
