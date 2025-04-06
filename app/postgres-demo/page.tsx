@@ -18,6 +18,26 @@ export default async function PostgresDemo() {
       LIMIT 10
     `;
     
+    // 确保模板字符串中不引用外部变量
+    const codeExample = `import sql from '@/lib/postgres';
+
+// 简单查询
+const users = await sql\`SELECT * FROM users\`;
+
+// 带参数的查询
+const name = 'John';
+const age = 30;
+const usersWithParams = await sql\`
+  SELECT * FROM users 
+  WHERE name = \${name} AND age > \${age}
+\`;
+
+// 事务
+const result = await sql.begin(async (sql) => {
+  const { count } = await sql\`SELECT count(*) FROM users\`;
+  return count;
+});`;
+    
     return (
       <div className="container mx-auto p-4">
         <h1 className="text-2xl font-bold mb-4">PostgreSQL.js 直接查询示例</h1>
@@ -67,24 +87,7 @@ export default async function PostgresDemo() {
         <div className="mt-8 p-4 bg-gray-50 rounded-lg border">
           <h2 className="text-xl font-semibold mb-2">PostgreSQL.js 代码示例</h2>
           <pre className="bg-black text-white p-4 rounded overflow-x-auto">
-          {`import sql from '@/lib/postgres';
-
-// 简单查询
-const users = await sql\`SELECT * FROM users\`;
-
-// 带参数的查询
-const name = 'John';
-const age = 30;
-const usersWithParams = await sql\`
-  SELECT * FROM users 
-  WHERE name = ${name} AND age > ${age}
-\`;
-
-// 事务
-const result = await sql.begin(async (sql) => {
-  const { count } = await sql\`SELECT count(*) FROM users\`;
-  return count;
-});`}
+            {codeExample}
           </pre>
         </div>
       </div>
