@@ -1,181 +1,130 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { LeaderboardEntry } from '@/lib/leaderboard';
+import supabase from '@/lib/supabase';
 
-// Environment variables
-const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
-const R2_ACCESS_KEY = process.env.R2_ACCESS_KEY;
-const R2_SECRET_KEY = process.env.R2_SECRET_KEY;
-const R2_BUCKET_URL = process.env.R2_BUCKET_URL;
-const AUTH_KEY_SECRET = process.env.AUTH_KEY_SECRET;
-
-// Leaderboard file name in R2
-const LEADERBOARD_FILE = 'leaderboard.json';
-
-// Authorize request
-function authorizeRequest(request: NextRequest): boolean {
-  // For write operations, check for valid auth header
-  if (request.method === 'POST' || request.method === 'PUT' || request.method === 'DELETE') {
-    return request.headers.get('X-Custom-Auth-Key') === AUTH_KEY_SECRET;
-  }
-  
-  // Read operations are publicly accessible
-  return true;
+// 接口定义
+interface LeaderboardEntry {
+  id: string;
+  TwitterID: string;
+  TwitterName: string;
+  TwitterAvatar: string;
+  doodleScore: number;
+  created_at: string;
 }
 
-// Get leaderboard data
+interface ScoreSubmission {
+  userId: string;
+  username: string;
+  profileImage: string;
+  score: number;
+}
+
+// GET 获取排行榜
 export async function GET(request: NextRequest) {
   try {
-    // Get leaderboard data from R2
-    const leaderboardData = await fetchFromR2();
+    // 从URL获取用户ID
+    const userId = request.nextUrl.searchParams.get('userId') || '';
     
-    // Sort by score (high to low)
-    const sortedLeaderboard = leaderboardData.sort((a, b) => b.doodleScore - a.doodleScore);
+    // 查询排行榜数据
+    const { data: entries, error } = await supabase
+      .from('leaderboard')
+      .select('*')
+      .order('doodleScore', { ascending: false })
+      .limit(100);
     
-    // Update ranks
-    sortedLeaderboard.forEach((entry, index) => {
-      entry.rank = index + 1;
+    if (error) {
+      throw new Error(`获取排行榜数据失败: ${error.message}`);
+    }
+    
+    // 计算用户排名
+    let userRank = 0;
+    let isNewRecord = false;
+    
+    if (userId && entries) {
+      // 查找用户记录
+      const userEntryIndex = entries.findIndex((entry: LeaderboardEntry) => entry.TwitterID === userId);
+      if (userEntryIndex !== -1) {
+        userRank = userEntryIndex + 1;
+        
+        // 检查是否是新纪录（通常基于前端提供的信息）
+        isNewRecord = request.nextUrl.searchParams.get('isNewRecord') === 'true';
+      }
+    }
+    
+    return NextResponse.json({
+      entries: entries || [],
+      userRank,
+      isNewRecord
     });
     
-    return NextResponse.json({ 
-      success: true,
-      entries: sortedLeaderboard
-    });
   } catch (error) {
-    console.error('Failed to get leaderboard:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to get leaderboard' },
-      { status: 500 }
-    );
+    console.error('排行榜API错误:', error);
+    return NextResponse.json({ error: '获取排行榜失败' }, { status: 500 });
   }
 }
 
-// Submit new score
+// POST 提交新分数
 export async function POST(request: NextRequest) {
   try {
-    // Authorize request
-    if (!authorizeRequest(request)) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 403 }
-      );
+    const body: ScoreSubmission = await request.json();
+    
+    // 验证必要字段
+    if (!body.userId || !body.username || !body.score) {
+      return NextResponse.json({ error: '缺少必要参数' }, { status: 400 });
     }
     
-    // Parse request body
-    const entry = await request.json();
+    // 查询当前用户最高分
+    const { data: userScores, error: fetchError } = await supabase
+      .from('leaderboard')
+      .select('doodleScore')
+      .eq('TwitterID', body.userId)
+      .order('doodleScore', { ascending: false })
+      .limit(1);
     
-    // Validate request data
-    if (!entry.userId || !entry.username || typeof entry.doodleScore !== 'number') {
-      return NextResponse.json(
-        { success: false, error: 'Invalid data' },
-        { status: 400 }
-      );
+    if (fetchError) {
+      throw new Error(`查询用户当前分数失败: ${fetchError.message}`);
     }
     
-    // Write to R2
-    const result = await writeToR2(entry);
+    const currentScore = userScores && userScores.length > 0 ? userScores[0].doodleScore : 0;
     
-    // Return result
+    // 只有新分数更高才更新记录
+    const isNewRecord = body.score > currentScore;
+    
+    if (isNewRecord) {
+      // 插入新记录
+      const { error: insertError } = await supabase
+        .from('leaderboard')
+        .insert({
+          TwitterID: body.userId,
+          TwitterName: body.username,
+          TwitterAvatar: body.profileImage,
+          doodleScore: body.score
+        });
+      
+      if (insertError) {
+        throw new Error(`保存新分数失败: ${insertError.message}`);
+      }
+    }
+    
+    // 获取用户排名
+    const { count: betterScoresCount, error: rankError } = await supabase
+      .from('leaderboard')
+      .select('*', { count: 'exact', head: true })
+      .gt('doodleScore', isNewRecord ? body.score : currentScore);
+    
+    if (rankError) {
+      throw new Error(`获取用户排名失败: ${rankError.message}`);
+    }
+    
+    const userRank = (betterScoresCount || 0) + 1;
+    
     return NextResponse.json({
       success: true,
-      newRecord: result.newRecord,
-      rank: result.rank
+      isNewRecord,
+      userRank
     });
+    
   } catch (error) {
-    console.error('Failed to submit score:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to submit score' },
-      { status: 500 }
-    );
-  }
-}
-
-// Fetch leaderboard data from R2
-async function fetchFromR2(): Promise<LeaderboardEntry[]> {
-  try {
-    if (!R2_BUCKET_URL) {
-      throw new Error('R2 bucket URL not configured');
-    }
-    
-    const response = await fetch(`${R2_BUCKET_URL}/${LEADERBOARD_FILE}`);
-    
-    if (response.status === 404) {
-      // If file doesn't exist yet, return empty array
-      return [];
-    }
-    
-    if (!response.ok) {
-      throw new Error(`R2 read failed: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    console.error('Failed to fetch from R2:', error);
-    // Return empty array as fallback
-    return [];
-  }
-}
-
-// Write entry to R2
-async function writeToR2(entry: Omit<LeaderboardEntry, 'rank'>): Promise<{ newRecord: boolean; rank: number }> {
-  try {
-    if (!R2_BUCKET_URL || !R2_ACCESS_KEY || !R2_SECRET_KEY) {
-      throw new Error('R2 configuration incomplete');
-    }
-    
-    // 1. Read existing leaderboard
-    const leaderboard = await fetchFromR2();
-    
-    // 2. Check if this is a new record for the user
-    const existingEntry = leaderboard.find(item => item.userId === entry.userId);
-    let newRecord = false;
-    
-    if (!existingEntry || entry.doodleScore > existingEntry.doodleScore) {
-      newRecord = true;
-      
-      // 3. Update or add the entry
-      if (existingEntry) {
-        // Update existing entry
-        Object.assign(existingEntry, {
-          ...entry,
-          timestamp: Date.now()
-        });
-      } else {
-        // Add new entry
-        leaderboard.push({
-          ...entry,
-          timestamp: Date.now()
-        });
-      }
-      
-      // 4. Sort and update ranks
-      leaderboard.sort((a, b) => b.doodleScore - a.doodleScore);
-      leaderboard.forEach((item, index) => {
-        item.rank = index + 1;
-      });
-      
-      // 5. Write back to R2
-      const putResponse = await fetch(`${R2_BUCKET_URL}/${LEADERBOARD_FILE}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Custom-Auth-Key': AUTH_KEY_SECRET || ''
-        },
-        body: JSON.stringify(leaderboard)
-      });
-      
-      if (!putResponse.ok) {
-        throw new Error(`R2 write failed: ${putResponse.status}`);
-      }
-    }
-    
-    // 6. Calculate rank
-    const sortedLeaderboard = [...leaderboard].sort((a, b) => b.doodleScore - a.doodleScore);
-    const rank = sortedLeaderboard.findIndex(item => item.userId === entry.userId) + 1;
-    
-    return { newRecord, rank };
-  } catch (error) {
-    console.error('Failed to write to R2:', error);
-    return { newRecord: false, rank: 0 };
+    console.error('提交分数API错误:', error);
+    return NextResponse.json({ error: '提交分数失败' }, { status: 500 });
   }
 } 

@@ -2,13 +2,19 @@ import { TwitterUser } from './auth';
 
 // Leaderboard user record type
 export interface LeaderboardEntry {
-  userId: string;
-  username: string;
-  displayName: string;
-  profileImage: string;
-  doodleScore: number;
-  rank?: number; // Rank, calculated by server
-  timestamp: number; // Record creation time
+  id: string;        // 数据库记录ID
+  TwitterID: string;    // Twitter用户ID
+  TwitterName: string;  // 用户名
+  TwitterAvatar: string;  // 头像URL
+  doodleScore: number;   // 游戏分数
+  created_at: string;  // 创建时间
+  rank?: number;     // 排名（前端计算）
+}
+
+interface LeaderboardResponse {
+  entries: LeaderboardEntry[];
+  userRank: number;
+  isNewRecord: boolean;
 }
 
 // Leaderboard service configuration
@@ -31,42 +37,62 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
   }
 }
 
-// Submit new score
-export async function submitScore(user: TwitterUser, score: number): Promise<{ success: boolean; newRecord: boolean; rank: number }> {
+// Get leaderboard data for a specific user
+export async function fetchLeaderboard(userId: string): Promise<LeaderboardResponse> {
   try {
-    const entry: Omit<LeaderboardEntry, 'rank'> = {
-      userId: user.id,
-      username: user.username || user.name,
-      displayName: user.name,
-      profileImage: user.profile_image_url,
-      doodleScore: score,
-      timestamp: Date.now()
-    };
+    const response = await fetch(`/api/leaderboard?userId=${userId}`);
+    if (!response.ok) {
+      throw new Error('获取排行榜失败');
+    }
     
-    const response = await fetch(`${LEADERBOARD_API_URL}`, {
+    const data = await response.json();
+    return {
+      entries: data.entries,
+      userRank: data.userRank || 0,
+      isNewRecord: data.isNewRecord || false
+    };
+  } catch (error) {
+    console.error('获取排行榜出错:', error);
+    return {
+      entries: [],
+      userRank: 0,
+      isNewRecord: false
+    };
+  }
+}
+
+// Submit new score
+export async function submitScore(user: TwitterUser, score: number): Promise<{ success: boolean; isNewRecord: boolean; userRank: number }> {
+  try {
+    const response = await fetch('/api/leaderboard', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(entry)
+      body: JSON.stringify({
+        userId: user.id,
+        username: user.name,
+        profileImage: user.profile_image_url,
+        score: score  // 修改为score字段
+      }),
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to submit score: ${response.status}`);
+      throw new Error('提交分数失败');
     }
     
     const result = await response.json();
     return {
       success: true,
-      newRecord: result.newRecord || false,
-      rank: result.rank || 0
+      isNewRecord: result.isNewRecord || false,
+      userRank: result.userRank || 0
     };
   } catch (error) {
-    console.error('Error submitting score:', error);
+    console.error('提交分数出错:', error);
     return {
       success: false,
-      newRecord: false,
-      rank: 0
+      isNewRecord: false,
+      userRank: 0
     };
   }
 }
@@ -109,4 +135,40 @@ export async function getUserRank(userId: string): Promise<{ rank: number; surro
       surroundingEntries: []
     };
   }
+}
+
+// Generate leaderboard view
+export function generateLeaderboardView(entries: LeaderboardEntry[], userRank: number): LeaderboardEntry[] {
+  // Rank each entry
+  const rankedEntries = entries.map((entry, index) => ({
+    ...entry,
+    rank: index + 1
+  }));
+  
+  // Get top three entries
+  const topThree = rankedEntries.slice(0, 3);
+  
+  // If user is not in top three, add user and surrounding entries
+  if (userRank > 3) {
+    // Find user's position
+    const userIndex = rankedEntries.findIndex(entry => entry.rank === userRank);
+    
+    if (userIndex !== -1) {
+      // Get previous and next entries
+      const prevEntry = userIndex > 0 ? rankedEntries[userIndex - 1] : null;
+      const userEntry = rankedEntries[userIndex];
+      const nextEntry = userIndex < rankedEntries.length - 1 ? rankedEntries[userIndex + 1] : null;
+      
+      // Build final leaderboard view
+      return [
+        ...topThree,
+        { id: 'divider1', TwitterID: '', TwitterName: '...', TwitterAvatar: '', doodleScore: 0, created_at: '', rank: -1 },
+        ...(prevEntry ? [prevEntry] : []),
+        userEntry,
+        ...(nextEntry ? [nextEntry] : []),
+      ];
+    }
+  }
+  
+  return topThree;
 } 

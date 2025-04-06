@@ -3,7 +3,7 @@
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react'
 import { useGame, Platform, PowerUp } from './GameProvider'
 import { useAuth } from '@/lib/auth'
-import Leaderboard from './Leaderboard'
+import { LeaderboardDialog } from './LeaderboardDialog'
 
 // Modern color scheme
 const COLORS = {
@@ -39,7 +39,8 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
     movingDirection,
     showLeaderboard,
     isNewRecord,
-    closeLeaderboard
+    closeLeaderboard,
+    highScore
   } = useGame()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [imagesLoaded, setImagesLoaded] = useState(false)
@@ -48,15 +49,16 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
   const [showNotification, setShowNotification] = useState(false)
   const [notificationMessage, setNotificationMessage] = useState('')
   
-  // Add Twitter authentication state
+  // 添加Twitter认证状态
   const { isAuthenticated, user } = useAuth();
   const [userProfileImage, setUserProfileImage] = useState<HTMLImageElement | null>(null);
-
-  // Load Twitter user avatar
+  const [userRank, setUserRank] = useState(0);
+  
+  // 加载Twitter用户头像
   useEffect(() => {
     if (isAuthenticated && user?.profile_image_url) {
       const img = new Image();
-      img.crossOrigin = "anonymous";  // Allow cross-domain image loading
+      img.crossOrigin = "anonymous";  // 允许跨域加载图片
       img.onload = () => {
         setUserProfileImage(img);
       };
@@ -65,7 +67,7 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
         setUserProfileImage(null);
       };
       
-      // Use profile_image_url directly
+      // 直接使用profile_image_url
       img.src = user.profile_image_url;
     } else {
       setUserProfileImage(null);
@@ -611,6 +613,12 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
     }
   }, [gameState, movingDirection, imagesLoaded, fontLoaded, isAuthenticated, userProfileImage])
 
+  // 处理重新开始游戏
+  const handleRestartGame = () => {
+    closeLeaderboard();
+    restartGame();
+  };
+
   // Render loading state or game canvas
   if (!imagesLoaded || !fontLoaded) {
     return (
@@ -624,14 +632,6 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
 
   return (
     <div className="relative w-full h-full">
-      {/* Leaderboard component */}
-      <Leaderboard 
-        score={gameState.score} 
-        open={showLeaderboard} 
-        onClose={closeLeaderboard}
-        isNewRecord={isNewRecord}
-      />
-      
       {/* Notification component */}
       <div className={`notification ${showNotification ? 'show' : ''}`}>
         {notificationMessage}
@@ -646,6 +646,22 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
           }
         }}
       />
+
+      {/* 排行榜弹窗 */}
+      {isAuthenticated && user && showLeaderboard && (
+        <LeaderboardDialog
+          open={showLeaderboard}
+          onOpenChange={(open: boolean) => {
+            if (!open) {
+              handleRestartGame();
+            }
+          }}
+          score={gameState.score}
+          isNewRecord={isNewRecord}
+          user={user}
+          rank={userRank || 0}
+        />
+      )}
     </div>
   )
 }) 
