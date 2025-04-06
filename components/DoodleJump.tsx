@@ -611,21 +611,52 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
     const handleGameOver = async () => {
       if (gameState.gameOver && isAuthenticated && user) {
         // 提交用户分数
-        try {
-          const result = await submitScore({
-            id: user.id,
-            name: user.name,
-            profile_image: user.profile_image_url,
-            score: gameState.score
-          });
-          
-          // 如果创造了新纪录，设置状态
-          if (result.isNewRecord) {
-            setIsNewRecord(true);
+        console.log('游戏结束，准备提交分数');
+        
+        // 设置最大重试次数
+        const maxRetries = 3;
+        let retryCount = 0;
+        let success = false;
+        
+        while (retryCount < maxRetries && !success) {
+          try {
+            const result = await submitScore({
+              id: user.id,
+              name: user.name,
+              profile_image: user.profile_image_url,
+              score: gameState.score
+            });
+            
+            if (result.success) {
+              console.log('分数提交成功', result);
+              // 如果创造了新纪录，设置状态
+              if (result.isNewRecord) {
+                setIsNewRecord(true);
+                console.log('创造了新纪录!');
+              }
+              success = true;
+            } else {
+              throw new Error(result.error || '提交分数失败');
+            }
+          } catch (error) {
+            console.error(`提交分数失败 (尝试 ${retryCount + 1}/${maxRetries}):`, error);
+            retryCount++;
+            
+            if (retryCount < maxRetries) {
+              // 等待一段时间后重试
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
           }
-        } catch (error) {
-          console.error('提交分数失败:', error);
         }
+        
+        // 如果所有尝试都失败了
+        if (!success) {
+          console.error('所有重试都失败，无法提交分数');
+        }
+      } else if (gameState.gameOver) {
+        // 游戏结束但用户未登录
+        console.log('游戏结束，但用户未登录，不提交分数');
+        // 可以选择显示提示，鼓励用户登录
       }
     };
     

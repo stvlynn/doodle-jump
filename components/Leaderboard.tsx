@@ -93,47 +93,76 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
   // 加载排行榜数据
   useEffect(() => {
     const fetchLeaderboard = async () => {
-      if (!open || !isAuthenticated || !user) return;
-
+      if (!open) return;
+      
       setLoading(true);
-      try {
-        // 获取排行榜数据
-        const data = await getLeaderboard();
-        
-        // 添加排名信息
-        const rankedData = data.map((item, index) => ({
-          ...item,
-          rank: index + 1
-        })) as LeaderboardUser[];
-        
-        setLeaderboard(rankedData);
-        
-        // 设置前三名
-        setTopThree(rankedData.slice(0, 3));
-        
-        // 如果用户已登录，获取用户排名相关信息
-        if (user?.id) {
-          const userIndex = rankedData.findIndex(item => item.id === user.id);
+      
+      // 设置最大重试次数
+      const maxRetries = 3;
+      let retryCount = 0;
+      let success = false;
+      
+      while (retryCount < maxRetries && !success) {
+        try {
+          // 如果用户未登录，我们仍然可以显示排行榜
+          let data = [];
           
-          if (userIndex !== -1) {
-            const userRank = rankedData[userIndex];
-            const prevUser = userIndex > 0 ? rankedData[userIndex - 1] : undefined;
-            const nextUser = userIndex < rankedData.length - 1 ? rankedData[userIndex + 1] : undefined;
+          if (isAuthenticated && user) {
+            // 获取排行榜数据
+            data = await getLeaderboard();
+            console.log('成功获取排行榜数据', data);
+          } else {
+            // 非登录用户仍然可以查看排行榜
+            data = await getLeaderboard();
+            console.log('非登录用户获取排行榜数据', data);
+          }
+          
+          // 添加排名信息
+          const rankedData = data.map((item: any, index: number) => ({
+            ...item,
+            rank: index + 1
+          })) as LeaderboardUser[];
+          
+          setLeaderboard(rankedData);
+          
+          // 设置前三名
+          setTopThree(rankedData.slice(0, 3));
+          
+          // 如果用户已登录，获取用户排名相关信息
+          if (isAuthenticated && user?.id) {
+            const userIndex = rankedData.findIndex(item => item.id === user.id);
             
-            setUserRankInfo({ userRank, prevUser, nextUser });
+            if (userIndex !== -1) {
+              const userRank = rankedData[userIndex];
+              const prevUser = userIndex > 0 ? rankedData[userIndex - 1] : undefined;
+              const nextUser = userIndex < rankedData.length - 1 ? rankedData[userIndex + 1] : undefined;
+              
+              setUserRankInfo({ userRank, prevUser, nextUser });
+              console.log('用户排名信息:', { rank: userIndex + 1, total: rankedData.length });
+            } else {
+              console.log('用户未上榜');
+            }
+          }
+          
+          success = true;
+        } catch (error) {
+          console.error(`加载排行榜失败 (尝试 ${retryCount + 1}/${maxRetries}):`, error);
+          retryCount++;
+          
+          if (retryCount < maxRetries) {
+            // 等待一段时间后重试
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
-        
-        // 如果创造新纪录，显示礼花特效
-        if (isNewRecord) {
-          setShowConfetti(true);
-          setTimeout(() => setShowConfetti(false), 3000);
-        }
-      } catch (error) {
-        console.error('加载排行榜失败:', error);
-      } finally {
-        setLoading(false);
       }
+      
+      // 如果创造新纪录，显示礼花特效
+      if (isNewRecord) {
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 3000);
+      }
+      
+      setLoading(false);
     };
     
     fetchLeaderboard();
