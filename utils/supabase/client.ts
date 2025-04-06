@@ -114,31 +114,15 @@ export const submitScore = async (userData: {
       console.log('提交新纪录到数据库:', userRecord);
       
       try {
-        // 首先尝试插入新记录，如果存在则使用第二个请求更新
-        let result;
+        // 使用数组格式传递数据，并使用.select()获取返回值
+        const { data, error } = await supabase
+          .from('users')
+          .insert([userRecord])
+          .select();
         
-        if (!existingUser) {
-          // 新用户，直接插入
-          const { data, error } = await supabase
-            .from('users')
-            .insert(userRecord)
-            .select();
-            
-          if (error) throw error;
-          result = data;
-        } else {
-          // 已存在用户，更新分数
-          const { data, error } = await supabase
-            .from('users')
-            .update(userRecord)
-            .eq('id', userData.id)
-            .select();
-            
-          if (error) throw error;
-          result = data;
-        }
+        if (error) throw error;
         
-        console.log('新纪录提交成功!', result);
+        console.log('新纪录提交成功!', data);
         return {
           success: true,
           isNewRecord: true,
