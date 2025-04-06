@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { DifficultyManager } from './DifficultyManager'
+import { useAuth } from '@/lib/auth'
+import { submitScore, getUserHighScore } from '@/lib/leaderboard'
 
 // Game state types
 export interface Platform {
@@ -59,6 +61,10 @@ interface GameContextType {
   resumeGame: () => void
   toggleGravityControl: (enabled: boolean) => void
   useGravityControl: boolean
+  showLeaderboard: boolean
+  isNewRecord: boolean
+  closeLeaderboard: () => void
+  highScore: number
 }
 
 // Konami Code sequence
@@ -118,6 +124,59 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isPaused, setIsPaused] = useState(false);
   const [useGravityControl, setUseGravityControl] = useState(false);
   const [konamiCodeSequence, setKonamiCodeSequence] = useState<string[]>([]);
+  
+  // 添加排行榜相关状态
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [isNewRecord, setIsNewRecord] = useState(false);
+  const [highScore, setHighScore] = useState(0);
+  
+  // 添加认证状态
+  const { isAuthenticated, user } = useAuth();
+  
+  // 获取用户最高分
+  useEffect(() => {
+    const fetchHighScore = async () => {
+      if (isAuthenticated && user) {
+        try {
+          const score = await getUserHighScore(user.id);
+          setHighScore(score);
+        } catch (error) {
+          console.error('获取最高分失败:', error);
+        }
+      }
+    };
+    
+    fetchHighScore();
+  }, [isAuthenticated, user]);
+  
+  // 检测游戏结束，显示排行榜
+  useEffect(() => {
+    if (gameState.gameOver && gameState.score > 0) {
+      // 如果用户已登录，提交分数
+      const submitUserScore = async () => {
+        if (isAuthenticated && user) {
+          try {
+            const result = await submitScore(user, gameState.score);
+            setIsNewRecord(result.newRecord);
+          } catch (error) {
+            console.error('提交分数失败:', error);
+          }
+        }
+        
+        // 1秒后显示排行榜
+        setTimeout(() => {
+          setShowLeaderboard(true);
+        }, 1000);
+      };
+      
+      submitUserScore();
+    }
+  }, [gameState.gameOver, gameState.score, isAuthenticated, user]);
+  
+  // 关闭排行榜
+  const closeLeaderboard = () => {
+    setShowLeaderboard(false);
+  };
 
   // Calculate current difficulty based on score
   const calculateDifficulty = (score: number): number => {
@@ -845,7 +904,11 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         pauseGame,
         resumeGame,
         toggleGravityControl,
-        useGravityControl
+        useGravityControl,
+        showLeaderboard,
+        isNewRecord,
+        closeLeaderboard,
+        highScore
       }}
     >
       {children}

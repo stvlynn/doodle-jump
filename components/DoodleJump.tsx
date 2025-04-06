@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react'
 import { useGame, Platform, PowerUp } from './GameProvider'
 import { useAuth } from '@/lib/auth'
+import Leaderboard from './Leaderboard'
 
 // Modern color scheme
 const COLORS = {
@@ -28,7 +29,18 @@ export interface DoodleJumpProps {
 }
 
 export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => void; handleButtonUp: () => void }, DoodleJumpProps>(({ onButtonDown, onButtonUp }, ref) => {
-  const { gameState, startGame, restartGame, movePlayerLeft, movePlayerRight, stopMoving, movingDirection } = useGame()
+  const { 
+    gameState, 
+    startGame, 
+    restartGame, 
+    movePlayerLeft, 
+    movePlayerRight, 
+    stopMoving, 
+    movingDirection,
+    showLeaderboard,
+    isNewRecord,
+    closeLeaderboard
+  } = useGame()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [imagesLoaded, setImagesLoaded] = useState(false)
   const [fontLoaded, setFontLoaded] = useState(false)
@@ -36,15 +48,15 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
   const [showNotification, setShowNotification] = useState(false)
   const [notificationMessage, setNotificationMessage] = useState('')
   
-  // 添加 Twitter 认证状态
+  // Add Twitter authentication state
   const { isAuthenticated, user } = useAuth();
   const [userProfileImage, setUserProfileImage] = useState<HTMLImageElement | null>(null);
 
-  // 加载Twitter用户头像
+  // Load Twitter user avatar
   useEffect(() => {
     if (isAuthenticated && user?.profile_image_url) {
       const img = new Image();
-      img.crossOrigin = "anonymous";  // 允许跨域加载图片
+      img.crossOrigin = "anonymous";  // Allow cross-domain image loading
       img.onload = () => {
         setUserProfileImage(img);
       };
@@ -53,7 +65,7 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
         setUserProfileImage(null);
       };
       
-      // 直接使用profile_image_url，不需要额外处理
+      // Use profile_image_url directly
       img.src = user.profile_image_url;
     } else {
       setUserProfileImage(null);
@@ -145,22 +157,22 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
       onButtonDown(direction)
     }
     
-    // 处理A键和Start键的逻辑
+    // Handle A and Start button logic
     if (direction === 'a') {
-      // 游戏进行中时，A键不触发开始/重新开始游戏功能
+      // During gameplay, A button should not trigger start/restart
       if (gameState && gameState.gameStarted && !gameState.gameOver) {
-        // 不执行任何开始游戏动作，但继续向上传递事件以支持Konami Code
+        // Don't execute any game start action, but continue to pass event for Konami Code
         return;
       }
       
-      // 仅在主屏或游戏结束时允许A键开始/重新开始游戏
+      // Only allow A button to start/restart game on main screen or game over
       if (gameState.gameOver) {
         restartGame()
       } else if (!gameState.gameStarted) {
         startGame()
       }
     } else if (direction === 'start') {
-      // Start键正常处理开始/重新开始游戏
+      // Start button normally handles start/restart
       if (gameState.gameOver) {
         restartGame()
       } else if (!gameState.gameStarted) {
@@ -207,18 +219,18 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
       } else if (e.key === 'Enter') {
         handleButtonDown('start')
       } else if (e.key === 'a') {
-        // 游戏进行中时，A键应该只能用于Konami Code检测，不能触发游戏重启
+        // During gameplay, A key should only be used for Konami Code detection, not game restart
         if (gameState && gameState.gameStarted && !gameState.gameOver) {
-          // 只发出按键事件，但不触发游戏控制功能
+          // Only emit key event but don't trigger game control functions
           if (onButtonDown) {
             onButtonDown('a')
           }
         } else {
-          // 游戏未开始或已结束时，正常处理A键
+          // When game not started or over, handle A key normally
           handleButtonDown('a')
         }
       } else if (e.key === 'b') {
-        // 正常处理B键
+        // Handle B key normally
         if (onButtonDown) {
           onButtonDown('b')
         }
@@ -421,10 +433,10 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
     ctx.shadowOffsetX = 2 * scaleX
     ctx.shadowOffsetY = 2 * scaleY
     
-    // 选择基础玩家图像
+    // Select base player image
     let playerImageKey: string
     
-    // 选择基础玩家状态（而不是带道具的状态）
+    // Select base player state (not powerup state)
     if (gameState.player.velocityY < 0) {
       playerImageKey = 'player-jump'
     } else if (gameState.player.velocityY > 5) {
@@ -433,13 +445,13 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
       playerImageKey = 'player'
     }
     
-    // 绘制玩家图像
+    // Draw player image
     const playerImage = imagesRef.current[playerImageKey]
     if (playerImage) {
-      // 如果用户已登录且头像已加载，使用Twitter头像
+      // If user is logged in and avatar loaded, use Twitter avatar
       if (isAuthenticated && userProfileImage) {
         try {
-          // 创建圆形剪切路径
+          // Create circular clipping path
           ctx.save();
           ctx.beginPath();
           ctx.arc(
@@ -452,7 +464,7 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
           ctx.closePath();
           ctx.clip();
           
-          // 绘制Twitter头像
+          // Draw Twitter avatar
           ctx.drawImage(
             userProfileImage, 
             playerX, 
@@ -464,53 +476,53 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
           ctx.restore();
         } catch (e) {
           console.error("Error drawing profile image:", e);
-          // 出错时回退到默认图像
+          // Fall back to default image on error
           ctx.drawImage(playerImage, playerX, playerY, playerWidth, playerHeight);
         }
       } else {
-        // 使用默认角色图像
+        // Use default character image
         ctx.drawImage(playerImage, playerX, playerY, playerWidth, playerHeight);
       }
       
-      // 如果玩家正在使用道具，绘制道具图标
+      // If player has active powerup, draw powerup icon
       if (gameState.player.activePowerup) {
         if (gameState.player.activePowerup === 'rocket') {
-          // 获取火箭图像
+          // Get rocket image
           const rocketImage = imagesRef.current['powerup-rocket'];
           if (rocketImage) {
-            // 只取火箭图像的下半部分并放在角色下方
+            // Only use bottom half of rocket image and place below character
             const rocketWidth = playerWidth * 0.8;
             const rocketHeight = playerHeight * 0.8;
             const rocketX = playerX + (playerWidth - rocketWidth) * 0.6;
             const rocketY = playerY + playerHeight - rocketHeight * 0.3;
             
-            // 绘制火箭图像（只绘制下半部分）
+            // Draw rocket image (only bottom half)
             ctx.drawImage(
               rocketImage, 
-              0, rocketImage.height / 2, // 源图像的坐标和尺寸，只取下半部分
+              0, rocketImage.height / 2, // Source coordinates and dimensions, only bottom half
               rocketImage.width, rocketImage.height / 2,
-              rocketX, rocketY, // 目标位置
+              rocketX, rocketY, // Target position
               rocketWidth, rocketHeight / 2
             );
           }
         } else if (gameState.player.activePowerup === 'balloon') {
-          // 获取气球图像
+          // Get balloon image
           const balloonImage = imagesRef.current['powerup-balloon'];
           if (balloonImage) {
-            // 将气球图像放在角色上方
+            // Place balloon image above character
             const balloonWidth = playerWidth * 0.8;
             const balloonHeight = playerHeight * 0.8;
             const balloonX = playerX + (playerWidth - balloonWidth) / 2;
             const balloonY = playerY - balloonHeight * 0.8;
             
-            // 绘制气球图像
+            // Draw balloon image
             ctx.drawImage(
               balloonImage,
               balloonX, balloonY,
               balloonWidth, balloonHeight
             );
             
-            // 绘制一条线连接气球和角色
+            // Draw a line connecting balloon and character
             ctx.lineWidth = 1;
             ctx.strokeStyle = '#333';
             ctx.beginPath();
@@ -612,7 +624,15 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
 
   return (
     <div className="relative w-full h-full">
-      {/* Notification element */}
+      {/* Leaderboard component */}
+      <Leaderboard 
+        score={gameState.score} 
+        open={showLeaderboard} 
+        onClose={closeLeaderboard}
+        isNewRecord={isNewRecord}
+      />
+      
+      {/* Notification component */}
       <div className={`notification ${showNotification ? 'show' : ''}`}>
         {notificationMessage}
       </div>
