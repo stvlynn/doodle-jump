@@ -105,7 +105,7 @@ export const submitScore = async (userData: {
       id: userData.id,
       name: userData.name,
       profile_image: userData.profile_image,
-      doodle_score: userData.score.toString(),
+      doodle_score: userData.score.toString(), // 转换为字符串
     };
     
     // 如果用户不存在或新分数更高，则更新记录
@@ -114,11 +114,31 @@ export const submitScore = async (userData: {
       console.log('提交新纪录到数据库:', userRecord);
       
       try {
-        // 使用数组格式传递数据，并使用.select()获取返回值
-        const { data, error } = await supabase
-          .from('users')
-          .insert([userRecord])
-          .select();
+        let data;
+        let error;
+        
+        if (!existingUser) {
+          // 用户不存在，执行插入操作
+          console.log('用户不存在，执行插入操作');
+          const response = await supabase
+            .from('users')
+            .insert([userRecord])
+            .select();
+          
+          data = response.data;
+          error = response.error;
+        } else {
+          // 用户已存在，执行更新操作
+          console.log('用户已存在，执行更新操作');
+          const response = await supabase
+            .from('users')
+            .update(userRecord)
+            .eq('id', userData.id)
+            .select();
+          
+          data = response.data;
+          error = response.error;
+        }
         
         if (error) throw error;
         

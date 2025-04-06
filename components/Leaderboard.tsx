@@ -215,11 +215,11 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
           <DialogHeader>
             <DialogTitle className="flex flex-col items-center text-xl">
               <span className={`text-2xl font-bold mb-1 ${isNewRecord ? 'text-green-600' : ''}`}>
-                {score} 分
+                {score} points
               </span>
               {isNewRecord && (
                 <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">
-                  新纪录！
+                  New Record!
                 </span>
               )}
             </DialogTitle>
@@ -234,7 +234,7 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
               <>
                 {topThree.length > 0 && (
                   <div className="mb-4">
-                    <h3 className="text-sm font-semibold mb-2 text-gray-500">最高分</h3>
+                    <h3 className="text-sm font-semibold mb-2 text-gray-500">Top Scores</h3>
                     {topThree.map(item => (
                       <LeaderboardItem 
                         key={item.id} 
@@ -247,7 +247,7 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
                 
                 {userRankInfo.userRank && userRankInfo.userRank.rank! > 3 && (
                   <div className="mt-4">
-                    <h3 className="text-sm font-semibold mb-2 text-gray-500">你的排名</h3>
+                    <h3 className="text-sm font-semibold mb-2 text-gray-500">Your Ranking</h3>
                     
                     {userRankInfo.prevUser && (
                       <LeaderboardItem user={userRankInfo.prevUser} />
@@ -263,7 +263,7 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
                 
                 {!isAuthenticated && (
                   <div className="text-center text-gray-500 py-4">
-                    登录后查看完整排行榜
+                    Login to see the full leaderboard
                   </div>
                 )}
               </>
@@ -273,9 +273,21 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
           <DialogFooter>
             <button
               className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              onClick={() => onOpenChange(false)}
+              onClick={() => {
+                // 关闭对话框并重新开始游戏
+                onOpenChange(false);
+                // 给浏览器一点时间来处理UI更新
+                setTimeout(() => {
+                  // 尝试找到canvas元素并触发点击事件
+                  const canvas = document.querySelector('canvas');
+                  if (canvas) {
+                    canvas.focus();
+                    canvas.click();
+                  }
+                }, 100);
+              }}
             >
-              继续游戏
+              Continue Game
             </button>
           </DialogFooter>
         </DialogContent>
