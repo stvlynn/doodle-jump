@@ -31,6 +31,7 @@ export const getLeaderboard = async () => {
   
   try {
     // 获取分数降序排序的前50条记录
+    // 注意：我们仍使用数据库排序，但需意识到这是字符串排序而非数字排序
     const { data, error } = await supabase
       .from('users')
       .select('id, name, profile_image, doodle_score')
@@ -41,6 +42,9 @@ export const getLeaderboard = async () => {
       console.error('获取排行榜失败:', error)
       return []
     }
+    
+    // 由于数据库中按字符串排序可能不准确，我们在前端进行数字排序
+    // 在Leaderboard组件中完成此步骤
     
     return data || []
   } catch (e) {
@@ -54,8 +58,8 @@ export interface UserRecord {
   id: string;
   name: string;
   profile_image: string;
-  doodle_score: number;
-  updated_at?: string;
+  doodle_score: string;
+  created_at?: string;
 }
 
 export interface ScoreSubmitResult {
@@ -97,17 +101,17 @@ export const submitScore = async (userData: {
       '用户是新用户，继续创建记录'
     );
     
-    // 准备用户记录
+    // 准备用户记录 - 确保分数以字符串形式存储
     const userRecord: UserRecord = {
       id: userData.id,
       name: userData.name,
       profile_image: userData.profile_image,
-      doodle_score: userData.score,
-      updated_at: new Date().toISOString()
+      doodle_score: userData.score.toString(),
     };
     
     // 如果用户不存在或新分数更高，则更新记录
-    if (!existingUser || userData.score > (existingUser.doodle_score || 0)) {
+    const existingScore = existingUser ? parseInt(existingUser.doodle_score || '0', 10) : 0;
+    if (!existingUser || userData.score > existingScore) {
       console.log('提交新纪录到数据库:', userRecord);
       
       // 使用Supabase的原生upsert功能
@@ -131,7 +135,7 @@ export const submitScore = async (userData: {
       return {
         success: true,
         isNewRecord: true,
-        previousScore: existingUser?.doodle_score || 0
+        previousScore: existingScore
       }
     }
     
@@ -139,7 +143,7 @@ export const submitScore = async (userData: {
     return {
       success: true,
       isNewRecord: false,
-      previousScore: existingUser?.doodle_score || 0
+      previousScore: existingScore
     }
   } catch (e) {
     console.error('提交分数过程中发生错误:', e);
@@ -167,19 +171,24 @@ export const getUserRank = async (userId: string) => {
       return null
     }
     
+    // 由于数据库中的doodle_score是字符串，我们需要在JavaScript中进行数字排序
+    const sortedScores = [...scores].sort((a, b) => 
+      parseInt(b.doodle_score || '0', 10) - parseInt(a.doodle_score || '0', 10)
+    );
+    
     // 找到用户的排名
-    const userIndex = scores.findIndex(user => user.id === userId)
+    const userIndex = sortedScores.findIndex(user => user.id === userId)
     
     if (userIndex === -1) return null
     
     // 返回用户排名和相邻的用户
     return {
       rank: userIndex + 1,
-      total: scores.length,
+      total: sortedScores.length,
       // 获取前一名
       previous: userIndex > 0 ? userIndex - 1 : null,
       // 获取后一名
-      next: userIndex < scores.length - 1 ? userIndex + 1 : null
+      next: userIndex < sortedScores.length - 1 ? userIndex + 1 : null
     }
   } catch (e) {
     console.error('获取用户排名时发生错误:', e);

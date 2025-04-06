@@ -19,7 +19,7 @@ interface LeaderboardUser {
   id: string;
   name: string;
   profile_image: string;
-  doodle_score: number;
+  doodle_score: string;
   rank?: number;
 }
 
@@ -121,8 +121,13 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
             if (data && Array.isArray(data) && data.length > 0) {
               console.log('成功获取排行榜数据', data);
               
-              // 添加排名信息
-              const rankedData = data.map((item: any, index: number) => ({
+              // 添加排名信息 - 需要先按照分数排序
+              // 将字符串分数转换为数字进行排序
+              const sortedData = [...data].sort((a, b) => 
+                parseInt(b.doodle_score || '0', 10) - parseInt(a.doodle_score || '0', 10)
+              );
+              
+              const rankedData = sortedData.map((item: any, index: number) => ({
                 ...item,
                 rank: index + 1
               })) as LeaderboardUser[];
