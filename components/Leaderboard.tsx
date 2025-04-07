@@ -104,14 +104,85 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
   const hasLoadedOnceRef = useRef(false);
   // 内部状态来控制对话框显示，避免与外部状态冲突
   const [isOpen, setIsOpen] = useState(false);
+  // 添加一个关闭锁，防止关闭后短时间内再次打开
+  const closingLockRef = useRef(false);
   
   // 使用工具函数创建可控制的延迟
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // 同步外部和内部的open状态
+  // 同步外部和内部的open状态，但尊重关闭锁的状态
   useEffect(() => {
+    // 如果正在关闭锁定期，不要响应外部的打开请求
+    if (closingLockRef.current && open) {
+      console.log('排行榜处于关闭锁定期，忽略打开请求');
+      // 通知外部状态我们没有打开
+      onOpenChange(false);
+      return;
+    }
+    
     setIsOpen(open);
-  }, [open]);
+  }, [open, onOpenChange]);
+
+  // 自动延迟打开排行榜
+  useEffect(() => {
+    if (isNewRecord && !isOpen && !closingLockRef.current) {
+      // 立即显示排行榜，不再延迟
+      setIsOpen(true);
+      onOpenChange(true);
+    }
+  }, [isNewRecord, isOpen, onOpenChange]);
+
+  // 处理对话框关闭
+  const handleOpenChange = (newOpenState: boolean) => {
+    // 如果是关闭操作
+    if (!newOpenState) {
+      // 设置关闭锁，防止短时间内再次打开
+      closingLockRef.current = true;
+      
+      // 先更新内部状态
+      setIsOpen(false);
+      
+      // 然后调用外部onOpenChange回调
+      onOpenChange(false);
+      
+      // 如果游戏已结束，重启游戏
+      if (gameState.gameOver) {
+        // 立即重启游戏，不要等待，避免状态同步问题
+        restartGame();
+      }
+      
+      // 设置一个较长的锁定期，确保用户有时间看到游戏重启
+      setTimeout(() => {
+        closingLockRef.current = false;
+      }, 500);
+    } else {
+      // 如果是打开操作，且不在关闭锁定期
+      if (!closingLockRef.current) {
+        setIsOpen(true);
+        onOpenChange(true);
+      } else {
+        console.log('排行榜处于关闭锁定期，忽略打开请求');
+      }
+    }
+  };
+
+  // 处理继续游戏按钮
+  const handleContinueGame = () => {
+    // 设置关闭锁，防止短时间内再次打开
+    closingLockRef.current = true;
+    
+    // 强制关闭对话框
+    setIsOpen(false);
+    onOpenChange(false);
+    
+    // 立即重启游戏，不要等待
+    restartGame();
+    
+    // 锁定一段时间后释放
+    setTimeout(() => {
+      closingLockRef.current = false;
+    }, 500);
+  };
 
   // 加载排行榜数据
   useEffect(() => {
@@ -212,44 +283,6 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
     
     fetchLeaderboard();
   }, [isOpen, user, isAuthenticated, isNewRecord]);
-
-  // 自动延迟打开排行榜
-  useEffect(() => {
-    if (isNewRecord && !isOpen) {
-      // 立即显示排行榜，不再延迟
-      setIsOpen(true);
-      onOpenChange(true);
-    }
-  }, [isNewRecord, isOpen, onOpenChange]);
-
-  // 处理对话框关闭
-  const handleOpenChange = (newOpenState: boolean) => {
-    // 先更新内部状态
-    setIsOpen(newOpenState);
-    
-    // 然后调用外部onOpenChange回调
-    onOpenChange(newOpenState);
-    
-    // 如果是关闭操作且游戏状态为结束，重启游戏
-    if (!newOpenState && gameState.gameOver) {
-      // 延迟重启游戏，确保UI先更新
-      setTimeout(() => {
-        restartGame();
-      }, 150);
-    }
-  };
-
-  // 处理继续游戏按钮
-  const handleContinueGame = () => {
-    // 强制关闭对话框
-    setIsOpen(false);
-    onOpenChange(false);
-    
-    // 确保游戏在对话框完全关闭后重启
-    setTimeout(() => {
-      restartGame();
-    }, 150);
-  };
 
   return (
     <>
