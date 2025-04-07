@@ -38,6 +38,12 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
   const [showNotification, setShowNotification] = useState(false)
   const [notificationMessage, setNotificationMessage] = useState('')
   
+  // 在渲染函数return语句中添加状态变量
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [isNewRecord, setIsNewRecord] = useState(false);
+  // 使用useRef来存储提交状态，确保在异步操作中的稳定性
+  const isSubmittingRef = useRef(false);
+  
   // 添加 Twitter 认证状态
   const { isAuthenticated, user } = useAuth();
   const [userProfileImage, setUserProfileImage] = useState<HTMLImageElement | null>(null);
@@ -601,90 +607,83 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
     }
   }, [gameState, movingDirection, imagesLoaded, fontLoaded, isAuthenticated, userProfileImage])
 
-  // 在渲染函数return语句中添加状态变量
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [isNewRecord, setIsNewRecord] = useState(false);
-  // 使用useRef来存储提交状态，确保在异步操作中的稳定性
-  const isSubmittingRef = useRef(false);
-
-  // 在gameState.gameOver监听中添加提交分数功能
+  // Add score submission functionality in the gameState.gameOver listener
   useEffect(() => {
-    // 当游戏结束时，如果用户已登录，提交分数
+    // When the game ends, if the user is logged in, submit the score
     const handleGameOver = async () => {
-      // 如果已经在提交或不符合提交条件，则跳过
+      // Skip if already submitting or doesn't meet submission conditions
       if (!gameState.gameOver || !isAuthenticated || !user || isSubmittingRef.current) {
         if (gameState.gameOver && !isAuthenticated) {
-          // 游戏结束但用户未登录
-          console.log('游戏结束，但用户未登录，不提交分数');
-          // 显示提示，鼓励用户登录
-          displayNotification('登录后可以记录分数并查看排行榜!');
+          // Game is over but user is not logged in
+          console.log('Game over, but user is not logged in, not submitting score');
+          // Show a prompt, encouraging the user to log in
+          displayNotification('Login to save your score and check the leaderboard!');
         }
         return;
       }
       
-      // 设置锁避免重复提交
+      // Set lock to avoid duplicate submissions
       isSubmittingRef.current = true;
-      console.log('游戏结束，准备提交分数');
+      console.log('Game over, preparing to submit score');
       
       try {
-        // 设置最大重试次数
+        // Set maximum retry count
         const maxRetries = 3;
         let retryCount = 0;
         let success = false;
         
         while (retryCount < maxRetries && !success) {
           try {
-            console.log(`尝试提交分数 (${retryCount + 1}/${maxRetries})`);
+            console.log(`Attempting to submit score (${retryCount + 1}/${maxRetries})`);
             
             const result = await submitScore({
               id: user.id,
               name: user.name,
+              username: user.username,
               profile_image: user.profile_image_url,
               score: gameState.score
             });
             
             if (result.success) {
-              console.log('分数提交成功', result);
-              // 如果创造了新纪录，设置状态
+              console.log('Score submission successful', result);
+              // If a new record was set, update state
               if (result.isNewRecord) {
                 setIsNewRecord(true);
-                console.log('创造了新纪录!');
+                console.log('New record achieved!');
                 
-                // 如果是新纪录，延迟1秒后显示排行榜
-                setTimeout(() => {
-                  setShowLeaderboard(true);
-                }, 1000);
+                // If it's a new record, show the leaderboard immediately
+                setShowLeaderboard(true);
               }
               success = true;
             } else {
-              throw new Error(result.error || '提交分数失败');
+              throw new Error(result.error || 'Score submission failed');
             }
           } catch (error) {
-            console.error(`提交分数失败 (尝试 ${retryCount + 1}/${maxRetries}):`, error);
+            console.error(`Score submission failed (attempt ${retryCount + 1}/${maxRetries}):`, error);
             retryCount++;
             
             if (retryCount < maxRetries) {
-              // 指数退避策略 - 每次重试等待时间增加
+              // Exponential backoff strategy - increase wait time with each retry
               const delay = 1000 * Math.pow(2, retryCount - 1);
-              console.log(`等待 ${delay}ms 后重试...`);
+              console.log(`Waiting ${delay}ms before retrying...`);
               await new Promise(resolve => setTimeout(resolve, delay));
             }
           }
         }
         
-        // 如果所有尝试都失败了
+        // If all attempts failed
         if (!success) {
-          console.error('所有重试都失败，无法提交分数');
-          // 可以选择显示失败通知
-          displayNotification('无法提交分数，请稍后再试');
+          console.error('All retries failed, unable to submit score');
+          // Option to show failure notification
+          displayNotification('Unable to submit score, please try again later');
         }
       } finally {
-        // 确保无论成功或失败，都释放锁
+        // Ensure lock is released regardless of success or failure
         isSubmittingRef.current = false;
       }
     };
     
-    // 游戏结束时调用一次
+    // Call once when game ends
     handleGameOver();
   }, [gameState.gameOver, isAuthenticated, user, gameState.score]);
 
@@ -716,7 +715,7 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
         }}
       />
       
-      {/* 添加排行榜组件 */}
+      {/* Add leaderboard component */}
       <Leaderboard 
         open={showLeaderboard || (gameState.gameOver && isNewRecord)} 
         onOpenChange={setShowLeaderboard} 

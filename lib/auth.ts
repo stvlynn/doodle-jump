@@ -90,11 +90,11 @@ const getUserFromCookies = (): TwitterUser | null => {
       const decodedUser = decodeURIComponent(userCookie);
       const userData = JSON.parse(decodedUser);
       
-      // 转换成TwitterUser格式
+      // 转换成TwitterUser格式，使用新增的username字段
       return {
         id: userData.id,
         name: userData.name,
-        username: userData.name, // 使用name作为username的备选
+        username: userData.username || userData.name, // 优先使用username，如果不存在则回退到name
         profile_image_url: userData.profileImage
       };
     } catch (error) {

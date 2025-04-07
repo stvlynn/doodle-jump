@@ -19,6 +19,7 @@ import { useGame } from '@/components/GameProvider';
 interface LeaderboardUser {
   id: string;
   name: string;
+  username?: string;
   profile_image: string;
   doodle_score: string;
   rank?: number;
@@ -55,10 +56,13 @@ const Confetti = () => {
 
 // 用户排名项组件
 const LeaderboardItem = ({ user, highlight = false }: { user: LeaderboardUser, highlight?: boolean }) => {
+  // 使用username作为跳转链接，如果不存在则使用name
+  const twitterHandle = user.username || user.name;
+  
   return (
     <div className={`flex items-center p-2 rounded-lg mb-2 ${highlight ? 'bg-green-100' : ''}`}>
       <span className="text-lg font-bold w-8 text-right mr-3">{user.rank}.</span>
-      <Link href={`https://x.com/${user.id}`} target="_blank" className="flex items-center flex-1 group">
+      <Link href={`https://x.com/${twitterHandle}`} target="_blank" className="flex items-center flex-1 group">
         <div className="relative w-8 h-8 rounded-full overflow-hidden mr-2">
           <Image 
             src={user.profile_image || '/assets/player.svg'} 
@@ -74,7 +78,7 @@ const LeaderboardItem = ({ user, highlight = false }: { user: LeaderboardUser, h
               Follow+
             </span>
           </div>
-          <div className="text-xs text-gray-500 truncate">@{user.name}</div>
+          <div className="text-xs text-gray-500 truncate">@{twitterHandle}</div>
         </div>
         <div className="font-mono text-right">
           {user.doodle_score}
@@ -205,11 +209,8 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
   // 自动延迟打开排行榜
   useEffect(() => {
     if (isNewRecord && !open) {
-      const timer = setTimeout(() => {
-        onOpenChange(true);
-      }, 1000);
-      
-      return () => clearTimeout(timer);
+      // 立即显示排行榜，不再延迟
+      onOpenChange(true);
     }
   }, [isNewRecord, open, onOpenChange]);
 

@@ -34,7 +34,7 @@ export const getLeaderboard = async () => {
     // 注意：我们仍使用数据库排序，但需意识到这是字符串排序而非数字排序
     const { data, error } = await supabase
       .from('users')
-      .select('id, name, profile_image, doodle_score')
+      .select('id, name, username, profile_image, doodle_score')
       .order('doodle_score', { ascending: false })
       .limit(50)
       
@@ -57,6 +57,7 @@ export const getLeaderboard = async () => {
 export interface UserRecord {
   id: string;
   name: string;
+  username: string;
   profile_image: string;
   doodle_score: string;
 }
@@ -68,18 +69,19 @@ export interface ScoreSubmitResult {
   error?: string;
 }
 
-// 提交用户分数
+// Submit user score
 export const submitScore = async (userData: { 
   id: string, 
   name: string, 
+  username?: string,
   profile_image: string, 
   score: number 
 }): Promise<ScoreSubmitResult> => {
   try {
-    console.log('正在提交分数:', userData);
+    console.log('Submitting score:', userData);
     const supabase = createSupabaseClient()
     
-    // 首先检查用户是否已存在并获取其当前分数 - 使用标准查询格式
+    // First check if the user already exists and get their current score - using standard query format
     const { data: existingUser, error: queryError } = await supabase
       .from('users')
       .select('doodle_score')
@@ -87,7 +89,7 @@ export const submitScore = async (userData: {
       .maybeSingle()
     
     if (queryError) {
-      console.error('查询用户分数失败:', queryError);
+      console.error('Failed to query user score:', queryError);
       return {
         success: false,
         isNewRecord: false,
@@ -96,30 +98,31 @@ export const submitScore = async (userData: {
     }
     
     console.log(existingUser ? 
-      `找到现有用户记录，当前分数: ${existingUser.doodle_score}` : 
-      '用户是新用户，继续创建记录'
+      `Found existing user record, current score: ${existingUser.doodle_score}` : 
+      'User is new, proceeding to create record'
     );
     
-    // 准备用户记录 - 不包含任何时间戳字段
+    // Prepare user record - without any timestamp fields
     const userRecord: UserRecord = {
       id: userData.id,
       name: userData.name,
+      username: userData.username || userData.name, // Ensure username field has a value
       profile_image: userData.profile_image,
-      doodle_score: userData.score.toString(), // 转换为字符串
+      doodle_score: userData.score.toString(), // Convert to string
     };
     
-    // 如果用户不存在或新分数更高，则更新记录
+    // If user doesn't exist or new score is higher, update the record
     const existingScore = existingUser ? parseInt(existingUser.doodle_score || '0', 10) : 0;
     if (!existingUser || userData.score > existingScore) {
-      console.log('提交新纪录到数据库:', userRecord);
+      console.log('Submitting new record to database:', userRecord);
       
       try {
         let data;
         let error;
         
         if (!existingUser) {
-          // 用户不存在，执行插入操作
-          console.log('用户不存在，执行插入操作');
+          // User doesn't exist, perform insert operation
+          console.log('User does not exist, performing insert operation');
           const response = await supabase
             .from('users')
             .insert([userRecord])
@@ -128,8 +131,8 @@ export const submitScore = async (userData: {
           data = response.data;
           error = response.error;
         } else {
-          // 用户已存在，执行更新操作
-          console.log('用户已存在，执行更新操作');
+          // User exists, perform update operation
+          console.log('User exists, performing update operation');
           const response = await supabase
             .from('users')
             .update(userRecord)
@@ -142,34 +145,34 @@ export const submitScore = async (userData: {
         
         if (error) throw error;
         
-        console.log('新纪录提交成功!', data);
+        console.log('New record submitted successfully!', data);
         return {
           success: true,
           isNewRecord: true,
           previousScore: existingScore
         }
       } catch (error) {
-        console.error('提交分数失败:', error);
+        console.error('Failed to submit score:', error);
         return {
           success: false,
           isNewRecord: false,
-          error: error instanceof Error ? error.message : '未知错误'
+          error: error instanceof Error ? error.message : 'Unknown error'
         }
       }
     }
     
-    console.log('分数未超过现有记录，不更新数据库');
+    console.log('Score did not exceed existing record, not updating database');
     return {
       success: true,
       isNewRecord: false,
       previousScore: existingScore
     }
   } catch (e) {
-    console.error('提交分数过程中发生错误:', e);
+    console.error('Error during score submission process:', e);
     return {
       success: false,
       isNewRecord: false,
-      error: e instanceof Error ? e.message : '未知错误'
+      error: e instanceof Error ? e.message : 'Unknown error'
     }
   }
 }
