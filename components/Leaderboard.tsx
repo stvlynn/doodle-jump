@@ -90,7 +90,7 @@ const LeaderboardItem = ({ user, highlight = false }: { user: LeaderboardUser, h
 
 export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: LeaderboardProps) {
   const { user, isAuthenticated } = useAuth();
-  const { restartGame } = useGame();
+  const { restartGame, gameState } = useGame();
   const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
   const [topThree, setTopThree] = useState<LeaderboardUser[]>([]);
   const [userRankInfo, setUserRankInfo] = useState<{ 
@@ -102,14 +102,21 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
   const [showConfetti, setShowConfetti] = useState(false);
   const isLoadingRef = useRef(false);
   const hasLoadedOnceRef = useRef(false);
+  // 内部状态来控制对话框显示，避免与外部状态冲突
+  const [isOpen, setIsOpen] = useState(false);
   
   // 使用工具函数创建可控制的延迟
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+  // 同步外部和内部的open状态
+  useEffect(() => {
+    setIsOpen(open);
+  }, [open]);
+
   // 加载排行榜数据
   useEffect(() => {
     // 如果dialog未显示或者已经在加载中，则跳过
-    if (!open || isLoadingRef.current) return;
+    if (!isOpen || isLoadingRef.current) return;
     
     const fetchLeaderboard = async () => {
       // 设置加载锁，避免重复请求
@@ -204,33 +211,67 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
     };
     
     fetchLeaderboard();
-  }, [open, user, isAuthenticated, isNewRecord]);
+  }, [isOpen, user, isAuthenticated, isNewRecord]);
 
   // 自动延迟打开排行榜
   useEffect(() => {
-    if (isNewRecord && !open) {
+    if (isNewRecord && !isOpen) {
       // 立即显示排行榜，不再延迟
+      setIsOpen(true);
       onOpenChange(true);
     }
-  }, [isNewRecord, open, onOpenChange]);
+  }, [isNewRecord, isOpen, onOpenChange]);
 
+  // 处理对话框关闭
+  const handleOpenChange = (newOpenState: boolean) => {
+    // 先更新内部状态
+    setIsOpen(newOpenState);
+    
+    // 然后调用外部onOpenChange回调
+    onOpenChange(newOpenState);
+    
+    // 如果是关闭操作且游戏状态为结束，重启游戏
+    if (!newOpenState && gameState.gameOver) {
+      // 延迟重启游戏，确保UI先更新
+      setTimeout(() => {
+        restartGame();
+      }, 150);
+    }
+  };
+
+  // 处理继续游戏按钮
   const handleContinueGame = () => {
-    // 先关闭对话框
+    // 强制关闭对话框
+    setIsOpen(false);
     onOpenChange(false);
     
-    // 等待对话框动画完成后再重启游戏
+    // 确保游戏在对话框完全关闭后重启
     setTimeout(() => {
-      // 使用游戏上下文中的restartGame方法直接重启游戏
       restartGame();
-    }, 100);
+    }, 150);
   };
 
   return (
     <>
       {showConfetti && <Confetti />}
       
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-md bg-white">
+      <Dialog 
+        open={isOpen} 
+        onOpenChange={handleOpenChange}
+        modal={true}
+      >
+        <DialogContent 
+          className="max-w-md bg-white"
+          onInteractOutside={(e) => {
+            // 防止点击外部关闭
+            e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            // 允许Esc关闭并重启游戏
+            e.preventDefault();
+            handleOpenChange(false);
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="flex flex-col items-center text-xl">
               <span className={`text-2xl font-bold mb-1 ${isNewRecord ? 'text-green-600' : ''}`}>
