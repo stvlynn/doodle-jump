@@ -106,9 +106,72 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
   const [isOpen, setIsOpen] = useState(false);
   // 添加一个关闭锁，防止关闭后短时间内再次打开
   const closingLockRef = useRef(false);
+  // 检测是否为移动设备
+  const isMobileDevice = typeof window !== 'undefined' && window.innerWidth < 768;
   
   // 使用工具函数创建可控制的延迟
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  
+  // 创建Twitter分享链接
+  const createShareLink = () => {
+    // 基本游戏信息
+    const gameUrl = "https://doodle.twi.am";
+    let tweetText = "";
+    
+    // 根据排名信息构造推文内容
+    if (userRankInfo.userRank) {
+      const rank = userRankInfo.userRank.rank;
+      tweetText = `I scored ${score} points in Doodle Jump and ranked #${rank} on the leaderboard! Can you beat my score? Play now:`;
+    } else {
+      tweetText = `I scored ${score} points in Doodle Jump! Can you beat my score? Play now:`;
+    }
+    
+    // 如果创造了新纪录，添加额外信息
+    if (isNewRecord) {
+      tweetText = `NEW RECORD! ${tweetText}`;
+    }
+    
+    // 构造并返回编码后的URL
+    return `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}&url=${encodeURIComponent(gameUrl)}`;
+  };
+
+  // 处理分享到Twitter
+  const handleShareToTwitter = () => {
+    const shareUrl = createShareLink();
+    window.open(shareUrl, '_blank');
+  };
+  
+  // 组件挂载时添加调试日志
+  useEffect(() => {
+    console.log('Leaderboard mounted', {
+      isMobile: isMobileDevice,
+      width: typeof window !== 'undefined' ? window.innerWidth : 'unknown',
+      initialOpen: open,
+      gameOver: gameState?.gameOver,
+      score
+    });
+    
+    // 为移动设备添加一个特殊的监听，确保gameOver状态变化时能显示排行榜
+    if (isMobileDevice) {
+      const checkGameOver = () => {
+        console.log('Mobile device check game over:', {
+          gameOver: gameState?.gameOver,
+          isOpen,
+          closingLocked: closingLockRef.current
+        });
+        
+        if (gameState?.gameOver && !isOpen && !closingLockRef.current) {
+          console.log('Mobile device: detected game over, forcing leaderboard open');
+          setIsOpen(true);
+          onOpenChange(true);
+        }
+      };
+      
+      // 定期检查游戏状态
+      const interval = setInterval(checkGameOver, 1000);
+      return () => clearInterval(interval);
+    }
+  }, []);
 
   // 同步外部和内部的open状态，但尊重关闭锁的状态
   useEffect(() => {
@@ -363,7 +426,14 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
             )}
           </div>
           
-          <DialogFooter>
+          <DialogFooter className="flex flex-col gap-2">
+            <button
+              className="w-full py-2 px-4 bg-black text-white rounded-md hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+              onClick={handleShareToTwitter}
+            >
+              <span className="text-xl">𝕏</span>
+              <span>Share to 𝕏</span>
+            </button>
             <button
               className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
               onClick={handleContinueGame}

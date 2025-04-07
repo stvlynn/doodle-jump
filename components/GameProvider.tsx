@@ -284,12 +284,21 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }
 
   const restartGame = () => {
+    console.log('Restarting game, game over state:', gameState.gameOver);
+    
     if (gameState.gameOver) {
-      setGameState({
-        ...initialGameState,
-        platforms: createInitialPlatforms(),
-        gameStarted: true
-      })
+      console.log('Game was over, creating new game state');
+      
+      // Use setTimeout to ensure this happens in the next event cycle
+      // This prevents race conditions with other components like Leaderboard
+      setTimeout(() => {
+        setGameState({
+          ...initialGameState,
+          platforms: createInitialPlatforms(),
+          gameStarted: true
+        });
+        console.log('Game state reset completed');
+      }, 50);
     }
   }
 

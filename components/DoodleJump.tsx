@@ -611,76 +611,92 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
   useEffect(() => {
     // When the game ends, if the user is logged in, submit the score
     const handleGameOver = async () => {
-      // Skip if already submitting or doesn't meet submission conditions
-      if (!gameState.gameOver || !isAuthenticated || !user || isSubmittingRef.current) {
-        if (gameState.gameOver && !isAuthenticated) {
-          // Game is over but user is not logged in
-          console.log('Game over, but user is not logged in, not submitting score');
-          // Show a prompt, encouraging the user to log in
-          displayNotification('Login to save your score and check the leaderboard!');
-        }
+      console.log('Game over detected, device info:', {
+        isMobile: typeof window !== 'undefined' && window.innerWidth < 768,
+        width: typeof window !== 'undefined' ? window.innerWidth : 'unknown',
+        gameOver: gameState.gameOver,
+        isAuthenticated: isAuthenticated,
+        score: gameState.score
+      });
+      
+      // For non-authenticated users, still show leaderboard but don't submit score
+      if (gameState.gameOver && !isAuthenticated) {
+        console.log('Game over, but user is not logged in, showing leaderboard without score submission');
+        displayNotification('Login to save your score and check the leaderboard!');
+        
+        // Always show leaderboard on game over, even for non-authenticated users
+        setShowLeaderboard(true);
         return;
       }
       
-      // Set lock to avoid duplicate submissions
-      isSubmittingRef.current = true;
-      console.log('Game over, preparing to submit score');
+      // Skip if not game over or already submitting
+      if (!gameState.gameOver || isSubmittingRef.current) {
+        return;
+      }
       
-      try {
-        // Set maximum retry count
-        const maxRetries = 3;
-        let retryCount = 0;
-        let success = false;
+      // For authenticated users, submit score
+      if (isAuthenticated && user) {
+        // Set lock to avoid duplicate submissions
+        isSubmittingRef.current = true;
+        console.log('Game over, preparing to submit score');
         
-        while (retryCount < maxRetries && !success) {
-          try {
-            console.log(`Attempting to submit score (${retryCount + 1}/${maxRetries})`);
-            
-            const result = await submitScore({
-              id: user.id,
-              name: user.name,
-              username: user.username,
-              profile_image: user.profile_image_url,
-              score: gameState.score
-            });
-            
-            if (result.success) {
-              console.log('Score submission successful', result);
-              // If a new record was set, update state
-              if (result.isNewRecord) {
-                setIsNewRecord(true);
-                console.log('New record achieved!');
-                
-                // If it's a new record, show the leaderboard immediately
-                setShowLeaderboard(true);
+        try {
+          // Set maximum retry count
+          const maxRetries = 3;
+          let retryCount = 0;
+          let success = false;
+          
+          while (retryCount < maxRetries && !success) {
+            try {
+              console.log(`Attempting to submit score (${retryCount + 1}/${maxRetries})`);
+              
+              const result = await submitScore({
+                id: user.id,
+                name: user.name,
+                username: user.username,
+                profile_image: user.profile_image_url,
+                score: gameState.score
+              });
+              
+              if (result.success) {
+                console.log('Score submission successful', result);
+                // If a new record was set, update state
+                if (result.isNewRecord) {
+                  setIsNewRecord(true);
+                  console.log('New record achieved!');
+                }
+                success = true;
+              } else {
+                throw new Error(result.error || 'Score submission failed');
               }
-              success = true;
-            } else {
-              throw new Error(result.error || 'Score submission failed');
-            }
-          } catch (error) {
-            console.error(`Score submission failed (attempt ${retryCount + 1}/${maxRetries}):`, error);
-            retryCount++;
-            
-            if (retryCount < maxRetries) {
-              // Exponential backoff strategy - increase wait time with each retry
-              const delay = 1000 * Math.pow(2, retryCount - 1);
-              console.log(`Waiting ${delay}ms before retrying...`);
-              await new Promise(resolve => setTimeout(resolve, delay));
+            } catch (error) {
+              console.error(`Score submission failed (attempt ${retryCount + 1}/${maxRetries}):`, error);
+              retryCount++;
+              
+              if (retryCount < maxRetries) {
+                // Exponential backoff strategy - increase wait time with each retry
+                const delay = 1000 * Math.pow(2, retryCount - 1);
+                console.log(`Waiting ${delay}ms before retrying...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+              }
             }
           }
+          
+          // If all attempts failed
+          if (!success) {
+            console.error('All retries failed, unable to submit score');
+            // Option to show failure notification
+            displayNotification('Unable to submit score, please try again later');
+          }
+        } finally {
+          // Ensure lock is released regardless of success or failure
+          isSubmittingRef.current = false;
         }
-        
-        // If all attempts failed
-        if (!success) {
-          console.error('All retries failed, unable to submit score');
-          // Option to show failure notification
-          displayNotification('Unable to submit score, please try again later');
-        }
-      } finally {
-        // Ensure lock is released regardless of success or failure
-        isSubmittingRef.current = false;
       }
+      
+      // Always show leaderboard on game over, regardless of authentication status or submission success
+      console.log('Showing leaderboard after game over');
+      setShowLeaderboard(true);
     };
     
     // Call once when game ends
