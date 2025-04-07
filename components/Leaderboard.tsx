@@ -13,6 +13,7 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { sleep } from '@/lib/utils';
+import { useGame } from '@/components/GameProvider';
 
 // 排行榜中的用户类型
 interface LeaderboardUser {
@@ -57,7 +58,7 @@ const LeaderboardItem = ({ user, highlight = false }: { user: LeaderboardUser, h
   return (
     <div className={`flex items-center p-2 rounded-lg mb-2 ${highlight ? 'bg-green-100' : ''}`}>
       <span className="text-lg font-bold w-8 text-right mr-3">{user.rank}.</span>
-      <Link href={`https://x.com/${user.name.replace('@', '')}`} target="_blank" className="flex items-center flex-1">
+      <Link href={`https://x.com/${user.id}`} target="_blank" className="flex items-center flex-1 group">
         <div className="relative w-8 h-8 rounded-full overflow-hidden mr-2">
           <Image 
             src={user.profile_image || '/assets/player.svg'} 
@@ -67,7 +68,12 @@ const LeaderboardItem = ({ user, highlight = false }: { user: LeaderboardUser, h
           />
         </div>
         <div className="flex-1 text-sm overflow-hidden">
-          <div className="font-semibold truncate">{user.name}</div>
+          <div className="font-semibold truncate flex items-center">
+            {user.name}
+            <span className="ml-1 px-1.5 py-0.5 text-xs bg-blue-100 text-blue-600 rounded-full opacity-80 group-hover:opacity-100">
+              Follow+
+            </span>
+          </div>
           <div className="text-xs text-gray-500 truncate">@{user.name}</div>
         </div>
         <div className="font-mono text-right">
@@ -80,6 +86,7 @@ const LeaderboardItem = ({ user, highlight = false }: { user: LeaderboardUser, h
 
 export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: LeaderboardProps) {
   const { user, isAuthenticated } = useAuth();
+  const { restartGame } = useGame();
   const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
   const [topThree, setTopThree] = useState<LeaderboardUser[]>([]);
   const [userRankInfo, setUserRankInfo] = useState<{ 
@@ -206,6 +213,17 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
     }
   }, [isNewRecord, open, onOpenChange]);
 
+  const handleContinueGame = () => {
+    // 先关闭对话框
+    onOpenChange(false);
+    
+    // 等待对话框动画完成后再重启游戏
+    setTimeout(() => {
+      // 使用游戏上下文中的restartGame方法直接重启游戏
+      restartGame();
+    }, 100);
+  };
+
   return (
     <>
       {showConfetti && <Confetti />}
@@ -273,19 +291,7 @@ export default function Leaderboard({ open, onOpenChange, score, isNewRecord }: 
           <DialogFooter>
             <button
               className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              onClick={() => {
-                // 关闭对话框并重新开始游戏
-                onOpenChange(false);
-                // 给浏览器一点时间来处理UI更新
-                setTimeout(() => {
-                  // 尝试找到canvas元素并触发点击事件
-                  const canvas = document.querySelector('canvas');
-                  if (canvas) {
-                    canvas.focus();
-                    canvas.click();
-                  }
-                }, 100);
-              }}
+              onClick={handleContinueGame}
             >
               Continue Game
             </button>
