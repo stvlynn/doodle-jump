@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="60" height="15" viewBox="0 0 60 15" xmlns="http://www.w3.org/2000/svg">
+  <!-- 平台主体 -->
+  <path d="M5,0 H55 Q60,0 60,5 V10 Q60,15 55,15 H5 Q0,15 0,10 V5 Q0,0 5,0 Z" fill="#FFA500">
+    <!-- 添加闪烁动画 -->
+    <animate attributeName="fill" values="#FFA500;#FFCC00;#FFA500" dur="0.8s" repeatCount="indefinite" />
+  </path>
+  
+  <!-- 平台高光 -->
+  <path d="M5,0 H55 Q60,0 60,3 V3 Q58,5 5,5 Q0,5 0,3 V3 Q0,0 5,0 Z" fill="rgba(255,255,255,0.4)"/>
+  
+  <!-- 问号 -->
+  <text x="30" y="12" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle" fill="#FFFFFF">?</text>
+</svg>

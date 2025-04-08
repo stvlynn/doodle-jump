@@ -9,9 +9,12 @@ export interface Platform {
   x: number
   y: number
   width: number
-  type: 'normal' | 'moving' | 'breakable' | 'spring'
+  type: 'normal' | 'moving' | 'breakable' | 'spring' | 'lucky'
   direction?: 'left' | 'right' // For moving platforms
   broken?: boolean // For breakable platforms
+  luckyEffect?: 'rocket' | 'balloon' | 'breakable' | 'instant-break' // For lucky platforms
+  isMovingBreakable?: boolean // For platforms that are both moving and breakable
+  activated?: boolean // 用于跟踪幸运平台是否已激活
 }
 
 export interface PowerUp {
@@ -45,6 +48,7 @@ export interface GameState {
   lastBalloonTime: number // Last balloon generation time
   konamiCodeActivated: boolean // Whether Konami Code has been activated
   konamiCodeUsed: boolean // Whether Konami Code has already been used in this game
+  lastEvent?: string // 最后发生的事件，用于UI通知
 }
 
 interface GameContextType {
@@ -110,7 +114,8 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     lastRocketTime: 0, // Initial last rocket generation time
     lastBalloonTime: 0, // Initial last balloon generation time
     konamiCodeActivated: false, // Konami Code not activated initially
-    konamiCodeUsed: false // Konami Code not used in this game yet
+    konamiCodeUsed: false, // Konami Code not used in this game yet
+    lastEvent: undefined
   }
 
   const [gameState, setGameState] = useState<GameState>(initialGameState)
@@ -127,7 +132,14 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Create platform function - using configuration from difficulty manager
   const createPlatform = (id: number, x: number, y: number, difficulty: number, lastPlatformType?: string): Platform => {
     const config = DifficultyManager.getPlatformConfig(difficulty);
-    const { movingChance, breakableChance, springChance, adjacentBreakablePlatformChance } = config;
+    const { 
+      movingChance, 
+      breakableChance, 
+      springChance, 
+      adjacentBreakablePlatformChance,
+      luckyChance,
+      movingBreakableChance
+    } = config;
     
     // If the previous platform was breakable and meets the adjacent probability, there's a higher chance to generate another breakable platform
     if (lastPlatformType === 'breakable' && Math.random() * 100 < adjacentBreakablePlatformChance) {
@@ -144,7 +156,31 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Basic platform type probability
     const rand = Math.random() * 100;
     
-    if (rand < movingChance) {
+    // Create moving-breakable platform (only at difficulty >= 1)
+    if (movingBreakableChance > 0 && rand < movingBreakableChance) {
+      return {
+        id,
+        x,
+        y,
+        width: PLATFORM_WIDTH,
+        type: 'breakable',
+        direction: Math.random() > 0.5 ? 'left' : 'right',
+        broken: false,
+        isMovingBreakable: true
+      }
+    } 
+    // Create lucky platform (only at difficulty >= 1)
+    else if (luckyChance > 0 && rand < movingBreakableChance + luckyChance) {
+      return {
+        id,
+        x,
+        y,
+        width: PLATFORM_WIDTH,
+        type: 'lucky'
+      }
+    } 
+    // Create standard moving platform
+    else if (rand < movingBreakableChance + luckyChance + movingChance) {
       return {
         id,
         x,
@@ -153,7 +189,9 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         type: 'moving',
         direction: Math.random() > 0.5 ? 'left' : 'right'
       }
-    } else if (rand < movingChance + breakableChance) {
+    } 
+    // Create standard breakable platform
+    else if (rand < movingBreakableChance + luckyChance + movingChance + breakableChance) {
       return {
         id,
         x,
@@ -162,7 +200,9 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         type: 'breakable',
         broken: false
       }
-    } else if (rand < movingChance + breakableChance + springChance) {
+    } 
+    // Create spring platform
+    else if (rand < movingBreakableChance + luckyChance + movingChance + breakableChance + springChance) {
       return {
         id,
         x,
@@ -170,7 +210,9 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         width: PLATFORM_WIDTH,
         type: 'spring'
       }
-    } else {
+    } 
+    // Default: create normal platform
+    else {
       return {
         id,
         x,
@@ -284,21 +326,12 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }
 
   const restartGame = () => {
-    console.log('Restarting game, game over state:', gameState.gameOver);
-    
     if (gameState.gameOver) {
-      console.log('Game was over, creating new game state');
-      
-      // Use setTimeout to ensure this happens in the next event cycle
-      // This prevents race conditions with other components like Leaderboard
-      setTimeout(() => {
-        setGameState({
-          ...initialGameState,
-          platforms: createInitialPlatforms(),
-          gameStarted: true
-        });
-        console.log('Game state reset completed');
-      }, 50);
+      setGameState({
+        ...initialGameState,
+        platforms: createInitialPlatforms(),
+        gameStarted: true
+      })
     }
   }
 
@@ -375,7 +408,7 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         // If Konami Code is newly activated and hasn't been used yet, give player rocket power
         if (newKonamiCodeActivated && !newKonamiCodeUsed && !newActivePowerup) {
-          newActivePowerup = 'rocket';
+          newActivePowerup = 'rocket' as any;
           newPowerupTimer = powerUpConfig.rocketDuration;
           newKonamiCodeUsed = true; // Mark as used for this game
         }
@@ -543,6 +576,80 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                   newVelocityY = SPRING_JUMP_FORCE
                   isJumping = true
                   break;
+                case 'lucky':
+                  // Lucky platform - trigger random effect when player lands on it
+                  // Determine lucky effect based on probabilities
+                  // 20% chance to get rocket pack
+                  // 30% chance to get balloon
+                  // 40% chance to turn into breakable platform that bounces once
+                  // 10% chance to break immediately
+                  const luckyRand = Math.random() * 100;
+                  
+                  if (luckyRand < 20) {
+                    // Rocket mode
+                    newY = platform.y - prevState.player.height
+                    newVelocityY = JUMP_FORCE
+                    isJumping = true
+                    newActivePowerup = 'rocket' as any
+                    newPowerupTimer = powerUpConfig.rocketDuration
+                    newPlatforms[i] = { ...platform, luckyEffect: 'rocket' };
+                  } else if (luckyRand < 50) {
+                    // Balloon
+                    newY = platform.y - prevState.player.height
+                    newVelocityY = JUMP_FORCE
+                    isJumping = true
+                    newActivePowerup = 'balloon' as any
+                    newPowerupTimer = powerUpConfig.balloonDuration
+                    newPlatforms[i] = { ...platform, luckyEffect: 'balloon' };
+                  } else if (luckyRand < 90) {
+                    // Breakable platform that bounces once
+                    newY = platform.y - prevState.player.height
+                    newVelocityY = JUMP_FORCE
+                    isJumping = true
+                    newPlatforms[i] = { 
+                      ...platform, 
+                      type: 'breakable',
+                      luckyEffect: 'breakable',
+                      broken: false
+                    };
+                  } else {
+                    // Break immediately - No jump, platform just breaks
+                    // Player should not bounce, just keep falling
+                    newPlatforms[i] = { 
+                      ...platform, 
+                      type: 'breakable',
+                      luckyEffect: 'instant-break',
+                      broken: true
+                    };
+                    // Make it fall faster
+                    newPlatforms[i].y += 5;
+                    
+                    // 设置事件通知
+                    console.log('Lucky platform instant break!');
+                    // 添加一个事件标记，这样DoodleJump组件可以显示通知
+                    return {
+                      ...prevState,
+                      player: {
+                        ...prevState.player,
+                        x: newX,
+                        y: newY,
+                        velocityY: newVelocityY,
+                        isJumping: false, // 确保玩家不会跳跃
+                        activePowerup: newActivePowerup,
+                        powerupTimer: newPowerupTimer
+                      },
+                      platforms: newPlatforms,
+                      powerups: newPowerups,
+                      lastEvent: 'platform-break',
+                      score: prevState.score,
+                      difficulty,
+                      lastRocketTime,
+                      lastBalloonTime,
+                      konamiCodeActivated: newKonamiCodeActivated,
+                      konamiCodeUsed: newKonamiCodeUsed
+                    };
+                  }
+                  break;
                 default:
                   // Normal platform - normal jump
                   newY = platform.y - prevState.player.height
@@ -586,7 +693,8 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return platform; // Already updated in collision detection
           }
           
-          if (platform.type === 'moving' && platform.direction) {
+          // 处理可移动的平台（包括可移动破碎平台）
+          if ((platform.type === 'moving' || platform.isMovingBreakable) && platform.direction) {
             let newX = platform.x
             const speed = 1 + (difficulty * 0.2) // Speed increases with difficulty
             
@@ -602,7 +710,9 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               }
             }
             return { ...platform, x: newX }
-          } else if (platform.type === 'breakable' && platform.broken) {
+          } 
+          // 处理所有的破碎平台
+          else if (platform.type === 'breakable' && platform.broken) {
             // Make broken platform fall
             return { ...platform, y: platform.y + 5 }
           }

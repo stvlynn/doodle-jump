@@ -55,13 +55,25 @@ export class DifficultyManager {
     const adjacentBreakablePlatformChance = difficulty >= 1 
       ? 15 + (difficulty * 0.5) 
       : 0;
+    
+    // Lucky platform chance - begins at difficulty ≥1, increases by 0.5% per 0.1 difficulty, capped at 5%
+    const luckyChance = difficulty >= 1
+      ? Math.min(2 + (difficulty - 1) * 5, 5)
+      : 0;
+      
+    // Moving breakable platform chance - begins at difficulty ≥1, increases by 0.5% per 0.1 difficulty, capped at 5%
+    const movingBreakableChance = difficulty >= 1
+      ? Math.min(2 + (difficulty - 1) * 5, 5)
+      : 0;
 
     return {
       platformCount,
       movingChance,
       breakableChance, 
       springChance,
-      adjacentBreakablePlatformChance
+      adjacentBreakablePlatformChance,
+      luckyChance,
+      movingBreakableChance
     };
   }
 

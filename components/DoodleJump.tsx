@@ -101,6 +101,8 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
       '/assets/platform-breakable.svg',
       '/assets/platform-broken.svg',
       '/assets/platform-spring.svg',
+      '/assets/platform-lucky.svg',
+      '/assets/platform-break-effect.svg',
       '/assets/powerup-spring.svg',
       '/assets/powerup-rocket.svg',
       '/assets/powerup-balloon.svg',
@@ -135,6 +137,14 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
       displayNotification('INSTANT ROCKET MODE ACTIVATED!');
     }
   }, [gameState.konamiCodeActivated]);
+  
+  // Watch for platform break event
+  useEffect(() => {
+    if (gameState.lastEvent === 'platform-break') {
+      // Show notification
+      displayNotification('Platform Broke!');
+    }
+  }, [gameState.lastEvent]);
   
   // Display notification function
   const displayNotification = (message: string) => {
@@ -377,24 +387,31 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
       ctx.shadowOffsetX = 0
       ctx.shadowOffsetY = 2 * scaleY
       
-      // Use preloaded images
-      let platformImageKey: string
+      // Handle different platform types in drawing
+      let platformImageKey = 'platform-normal'
       
-      // Draw different platform types
-      switch (platform.type) {
-        case 'moving':
-          platformImageKey = 'platform-moving'
-          break
-        case 'breakable':
-          platformImageKey = platform.broken ? 'platform-broken' : 'platform-breakable'
-          break
-        case 'spring':
-          platformImageKey = 'platform-spring'
-          break
-        default:
-          platformImageKey = 'platform-normal'
+      if (platform.type === 'breakable') {
+        platformImageKey = platform.broken ? 'platform-broken' : 'platform-breakable'
+      } else if (platform.type === 'spring') {
+        platformImageKey = 'platform-spring'
+      } else if (platform.type === 'moving') {
+        platformImageKey = 'platform-moving'
+      } else if (platform.type === 'lucky') {
+        platformImageKey = 'platform-lucky'
       }
       
+      // 对于既是移动又是可破碎的平台，使用特殊的处理
+      if (platform.isMovingBreakable) {
+        // 如果是已破碎状态，使用破碎平台的图像
+        if (platform.broken) {
+          platformImageKey = 'platform-broken'
+        } else {
+          // 否则使用可破碎平台的图像，这样玩家能看出它是可破碎的
+          platformImageKey = 'platform-breakable'
+        }
+      }
+      
+      // Draw the platform
       const platformImage = imagesRef.current[platformImageKey]
       if (platformImage) {
         const height = platform.type === 'spring' ? 25 * scaleY : 15 * scaleY
@@ -406,6 +423,20 @@ export const DoodleJump = forwardRef<{ handleButtonDown: (direction: string) => 
           platform.width * scaleX, 
           height
         )
+        
+        // 如果是即时破坏的平台，添加破碎特效
+        if (platform.type === 'breakable' && platform.luckyEffect === 'instant-break' && platform.broken) {
+          const breakEffectImage = imagesRef.current['platform-break-effect']
+          if (breakEffectImage) {
+            ctx.drawImage(
+              breakEffectImage, 
+              platform.x * scaleX, 
+              platform.y * scaleY, 
+              platform.width * scaleX, 
+              height
+            )
+          }
+        }
       }
       
       // Reset shadows

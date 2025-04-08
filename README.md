@@ -1,4 +1,4 @@
-# Doodle Jump - Game Boy Edition
+# Doodle Jump Game Boy Edition - Twi.am
 
 A web-based implementation of the classic Doodle Jump game, styled as a Game Boy game. Jump as high as you can while avoiding falling!
 
@@ -56,6 +56,48 @@ Access the settings menu by pressing the SELECT button or ESC key. Options inclu
 ## How It Works
 
 The game uses Next.js with React for the frontend and implements the game loop using React hooks. The difficulty system dynamically adjusts platform generation, power-up frequency, and other game mechanics based on your score.
+
+## Difficulty System
+
+The game features a dynamic difficulty system that scales as you progress:
+
+- Initial difficulty is 0
+- Every 1000 points increases difficulty by 0.1
+- Maximum difficulty is 20
+
+### Platform Probabilities
+
+As difficulty increases, the probability of encountering different platform types changes:
+
+| Platform Type | Initial Probability | Formula | Maximum |
+|---------------|---------------------|---------|---------|  
+| Normal | Default when others don't spawn | - | - |
+| Moving | 5% | 5% + (difficulty × 2%) | 30% |
+| Breakable | 3% | 3% + (difficulty × 1.5%) | 25% |
+| Spring | 2% | 2% + difficulty | 15% |
+| Lucky | 0% (starts at difficulty ≥1) | 2% + (difficulty-1) × 5% | 5% |
+| Moving-Breakable | 0% (starts at difficulty ≥1) | 2% + (difficulty-1) × 5% | 5% |
+
+Additionally, if a breakable platform is generated, there's a chance the next platform will also be breakable:
+- 0% at difficulty 0
+- 15% + (difficulty × 0.5%) at difficulty ≥1
+
+### Power-up Probabilities
+
+Power-ups appear randomly with increasing frequency at higher difficulties:
+
+| Power-up | Initial Probability | Formula | Maximum | Cooldown |
+|----------|---------------------|---------|---------|----------|  
+| Rocket | 2% | 2% + (difficulty × 0.3%) | 8% | 450-200 frames |
+| Balloon | 4% | 4% + (difficulty × 0.4%) | 12% | 300-150 frames |
+
+### Platform Spacing
+
+The vertical distance between platforms also changes with difficulty:
+
+- Minimum spacing: 40 + (difficulty × 1.5) pixels
+- Maximum spacing: 60 + (difficulty × 2) pixels
+- Spacing is capped at 80% of the player's maximum jump height
 
 ## Technology Stack
 

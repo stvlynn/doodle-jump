@@ -14,6 +14,22 @@ const dotMatrix = localFont({
 export const metadata: Metadata = {
   title: "Doodle Jump GameBoy",
   description: "A GameBoy-styled Doodle Jump clone",
+  metadataBase: new URL(process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'),
+  icons: {
+    icon: "/favicon.png"
+  },
+  openGraph: {
+    title: "Doodle Jump - Game Boy Edition",
+    description: "A web-based implementation of the classic Doodle Jump game, styled as a Game Boy game. Jump as high as you can while avoiding falling!",
+    images: [{ url: "/favicon.png" }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Doodle Jump - Game Boy Edition",
+    description: "A web-based implementation of the classic Doodle Jump game, styled as a Game Boy game.",
+    images: [{ url: "/favicon.png" }],
+  },
 };
 
 export default function RootLayout({

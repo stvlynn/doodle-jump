@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="60" height="15" viewBox="0 0 60 15" xmlns="http://www.w3.org/2000/svg">
+  <!-- 破碎粒子 -->
+  <g fill="#FFA500">
+    <!-- 中心爆炸效果 -->
+    <circle cx="30" cy="7.5" r="5" opacity="0.7">
+      <animate attributeName="r" values="0;10;5" dur="0.5s" repeatCount="1" />
+      <animate attributeName="opacity" values="1;0.7;0" dur="0.5s" repeatCount="1" />
+    </circle>
+    
+    <!-- 四散的碎片 -->
+    <circle cx="30" cy="7.5" r="1.5">
+      <animate attributeName="cx" values="30;40" dur="0.5s" repeatCount="1" />
+      <animate attributeName="cy" values="7.5;3" dur="0.5s" repeatCount="1" />
+      <animate attributeName="opacity" values="1;0" dur="0.5s" repeatCount="1" />
+    </circle>
+    
+    <circle cx="30" cy="7.5" r="1.5">
+      <animate attributeName="cx" values="30;20" dur="0.5s" repeatCount="1" />
+      <animate attributeName="cy" values="7.5;3" dur="0.5s" repeatCount="1" />
+      <animate attributeName="opacity" values="1;0" dur="0.5s" repeatCount="1" />
+    </circle>
+    
+    <circle cx="30" cy="7.5" r="1.5">
+      <animate attributeName="cx" values="30;45" dur="0.5s" repeatCount="1" />
+      <animate attributeName="cy" values="7.5;10" dur="0.5s" repeatCount="1" />
+      <animate attributeName="opacity" values="1;0" dur="0.5s" repeatCount="1" />
+    </circle>
+    
+    <circle cx="30" cy="7.5" r="1.5">
+      <animate attributeName="cx" values="30;15" dur="0.5s" repeatCount="1" />
+      <animate attributeName="cy" values="7.5;10" dur="0.5s" repeatCount="1" />
+      <animate attributeName="opacity" values="1;0" dur="0.5s" repeatCount="1" />
+    </circle>
+    
+    <!-- 更多小碎片 -->
+    <circle cx="30" cy="7.5" r="1">
+      <animate attributeName="cx" values="30;35" dur="0.5s" repeatCount="1" />
+      <animate attributeName="cy" values="7.5;12" dur="0.5s" repeatCount="1" />
+      <animate attributeName="opacity" values="1;0" dur="0.5s" repeatCount="1" />
+    </circle>
+    
+    <circle cx="30" cy="7.5" r="1">
+      <animate attributeName="cx" values="30;25" dur="0.5s" repeatCount="1" />
+      <animate attributeName="cy" values="7.5;12" dur="0.5s" repeatCount="1" />
+      <animate attributeName="opacity" values="1;0" dur="0.5s" repeatCount="1" />
+    </circle>
+  </g>
+</svg>
